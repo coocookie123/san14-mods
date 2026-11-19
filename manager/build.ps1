@@ -59,11 +59,16 @@ try{
         $taskFlags=@('/nologo','/utf-8','/std:c++17','/EHa','/O2','/MT','/W4','/bigobj','/DUNICODE','/D_UNICODE')
         foreach($taskInclude in @($taskOut,"$taskProject/include","$taskProject/src","$taskProject/src/generic","$taskProject/third_party","$taskSdk/include")){$taskFlags+='/I'+[IO.Path]::GetRelativePath($taskOut,$taskInclude)}
         if($Installer){
-            if(-not $AdapterSource -or -not $JsonRoot){throw 'The Setup stub requires -AdapterSource and -JsonRoot'}
-            $taskInstallerIncludes=@($AdapterSource,$JsonRoot) | ForEach-Object {'/I'+[IO.Path]::GetRelativePath($taskOut,$_)}
-            Invoke-Compile @("$taskProject/src/installer/installer_exe.cpp") 'san14-setup-stub.exe' $taskInstallerIncludes @('/SUBSYSTEM:WINDOWS')
+            $taskInstaller=Join-Path $taskProject 'src/installer'
+            $taskVersion=(Get-Content -LiteralPath (Join-Path $taskProject 'project.json') -Raw | ConvertFrom-Json).version
+            if($taskVersion -notmatch '^\d+\.\d+\.\d+$'){throw 'Invalid manager installer version'}
+            '#define SAN14_INSTALLER_VERSION "{0}"' -f $taskVersion | Set-Content -LiteralPath 'installer_version.h' -Encoding ascii
+            $taskRc=Join-Path $taskWindowsSdk "bin/$taskSdkVersion/x64/rc.exe"
+            & $taskRc /nologo /I $taskInstaller /foinstaller_exe.res (Join-Path $taskInstaller 'installer_exe.rc')
+            if($LASTEXITCODE){throw 'Installer resource compilation failed'}
+            Invoke-Compile @("$taskInstaller/installer_exe.cpp",(Join-Path $taskOut 'installer_exe.res')) 'san14-setup-stub.exe' @() @('/SUBSYSTEM:WINDOWS')
             if($Tests){
-                Invoke-Compile @("$taskProject/src/installer/installer_workflow_tests.cpp") 'installer-workflow-tests.exe' $taskInstallerIncludes
+                Invoke-Compile @("$taskInstaller/installer_workflow_tests.cpp") 'installer-workflow-tests.exe' @() @('/SUBSYSTEM:CONSOLE')
                 & (Join-Path $taskOut 'installer-workflow-tests.exe')
                 if($LASTEXITCODE){throw 'Installer workflow tests failed'}
             }

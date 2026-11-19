@@ -6,4 +6,6 @@
 
 `all` 和 `manager` 构建会按本目录 `adapter.lock.json` 自动下载公开 Release 中的固定 GameAdapter，校验 SHA-256，并打包 `SAN14-runtime.zip`。不需要访问私有源码仓。下载／缓存／离线参数见根 README；`-SkipGameAdapter` 可仅构建通用核心。
 
+`src/installer/` 包含 Windows Setup 及安装、修复和卸载测试。版本识别使用游戏 EXE 文件名、SHA-256 和构建号，运行时兼容性由 GameAdapter 判断。`./manager/build.ps1 -Installer -Tests` 可单独构建并测试安装器入口。根目录默认构建会将运行包和默认 Mod 封装成可运行的 Setup EXE。
+
 `worker/` 中的 Python Worker 对游戏版本布局无依赖。真实内存和原生命令由独立私有 GameAdapter 提供；本目录不包含该实现。通用 Host 和 Worker 可以单独构建及运行合成适配器测试，实际游戏需要匹配的 GameAdapter 二进制。

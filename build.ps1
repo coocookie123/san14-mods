@@ -88,4 +88,14 @@ try{
         & $Python -B (Join-Path $root 'tools/package.py') @modArgs
         if($LASTEXITCODE){throw 'Mod packaging failed'}
     }
+    if($Target -eq 'all' -and -not $Mod.Count -and -not $SkipGameAdapter){
+        & (Join-Path $root 'manager/build.ps1') -Installer -SdkRoot $sdk -CompilerRoot $CompilerRoot -ArtifactRoot $ArtifactRoot -Tests:$Tests
+        if($LASTEXITCODE){throw 'Installer stub build failed'}
+        if($Tests){
+            & $Python -B (Join-Path $root 'tests/test_setup_package.py')
+            if($LASTEXITCODE){throw 'Installer package tests failed'}
+        }
+        & $Python -B (Join-Path $root 'tools/package_setup.py') --root $root --artifact-root $ArtifactRoot
+        if($LASTEXITCODE){throw 'Installer packaging failed'}
+    }
 }finally{$env:PATH=$oldPath;$env:PYINSTALLER_CONFIG_DIR=$oldCache}

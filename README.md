@@ -18,7 +18,7 @@ tests/                   默认／可选分组和打包检查
 
 ## 构建
 
-需要 Windows x64、MSVC x64、Windows SDK 和 Python 3.12。`CompilerRoot` 指向 MSVC 的版本目录，也可使用配置好的 `SAN14_MSVC_ROOT`。
+需要 Windows x64、PowerShell 7、MSVC x64、Windows SDK 和 Python 3.12。可用 `-CompilerRoot` 或 `SAN14_MSVC_ROOT` 指定 MSVC 版本目录。
 
 ```powershell
 git clone https://github.com/zhaoqxu/san14-mods.git
@@ -28,7 +28,12 @@ py -3.12 -m venv .venv
 ./build.ps1 -Tests -ArtifactRoot build/first
 ```
 
-默认构建管理器、单 MCP Worker 和六个默认 Mod，并自动下载、校验及解压 GameAdapter。产物为 `build/first/SAN14-runtime.zip`（Host＋完整 Worker＋GameAdapter 及许可证）、`build/first/mods/default/*.s14mod` 和 `SAN14-mods-default.zip`；运行包与 Mod 包分别提供。
+准备好构建依赖后，一次运行 `build.ps1` 即可生成安装器。默认构建管理器、单 MCP Worker 和六个默认 Mod，并自动下载、校验及解压 GameAdapter。
+
+- `build/first/SAN14-ModManager-Setup-<版本>.exe` 内嵌管理器运行包、许可证和六个默认 Mod。MCP 随包安装，默认关闭。
+- `build/first/SAN14-runtime.zip`、`SAN14-mods-default.zip` 和 `mods/default/*.s14mod` 供单独使用。
+
+`-IncludeOptional` 额外生成可选 Mod 包，安装器仍只包含默认分组。仅构建组件子集或用 `-Mod` 选择 Mod 时，跳过安装器打包。
 
 固定版本、URL、大小与 SHA-256 在 `manager/adapter.lock.json`，不会自动追踪 `latest`。下载缓存位于 `build/.cache/gameadapter/`，适配包解压到对应 `ArtifactRoot/adapter-package/`。缓存校验失败会停止；删除损坏的缓存 ZIP 后可重新下载。已解压的受管文件损坏时会从已验证缓存修复，额外的用户文件会阻止覆盖。
 
@@ -39,7 +44,7 @@ py -3.12 -m venv .venv
 ./build.ps1 -Offline -AdapterArchive './SAN14-GameAdapter-0.1.0-single-worker-win64.zip' -Tests
 ```
 
-只研究通用 Host、希望跳过二进制获取时，使用 `-SkipGameAdapter`，此时不生成完整运行包。`-Target mods` 或 `-Target worker` 本身不下载适配器。所有操作仅写当前检出的 `build/`，不会自动安装到游戏目录。
+只研究通用 Host、希望跳过二进制获取时，使用 `-SkipGameAdapter`，此时不生成完整运行包和安装器。`-Target mods` 或 `-Target worker` 本身不下载适配器。构建只生成文件，安装时请手动运行 Setup。
 
 只改一个 Mod 时：
 
@@ -67,4 +72,4 @@ py -3.12 -m venv .venv
 
 直接从本仓开功能分支，在需要的目录修改后提交一个 PR，跨管理器、SDK 和 Mod 的配套修改可以一起审查。流程及修改位置见 [CONTRIBUTING.md](CONTRIBUTING.md)。源码统一不代表新的玩家版本已经发布；安装和游戏内验收分别记录。
 
-安装前退出游戏，使用管理器安装流程部署同一构建的 Host、完整 Worker、匹配 GameAdapter 和所选 Mod。先在隔离测试目录验收，再替换实际游戏安装。
+安装前退出游戏，在 Setup 中选择游戏目录。升级或卸载时 Setup 使用本机安装记录备份、核对和恢复受管文件。先在隔离测试目录验收，再替换实际游戏安装。
