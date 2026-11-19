@@ -305,8 +305,24 @@ void click_id(const std::string& id){const auto h=find_control_by_id(top(),id);a
 void search_traits(const std::string& text){const auto h=find_control_by_id(top(),"traits.search");assert(h);const auto cb=inputs.at(h);cb.first(cb.second,h,{text.data(),static_cast<uint32_t>(text.size())});click_id("traits.search.go");}
 template<class T>std::vector<uint8_t> bytes(const T& p){auto b=reinterpret_cast<const uint8_t*>(&p);return {b,b+sizeof(p)};}
 LegacyPreferences legacy_defaults(){LegacyPreferences p;const auto& defs=enhanced_settings_mod::custom_defs();for(size_t i=0;i<p.values.size();++i)p.values[i]=defs[i].def_val;return p;}
-Preferences saved(const std::map<std::string,std::vector<uint8_t>>& storage){
-    Preferences p;const auto& value=storage.at("enhanced.preferences.v3");assert(value.size()==sizeof(p));memcpy(&p,value.data(),sizeof(p));assert(p.valid());return p;
+using SavedRecords = std::map<std::string,std::vector<uint8_t>>;
+using enhanced_settings_mod::PreferencesV3;
+void clear_preferences(SavedRecords& storage){
+    storage.erase("enhanced.preferences.v4");storage.erase("enhanced.preferences.v3");
+}
+void seed_v3(SavedRecords& storage,const PreferencesV3& value){
+    clear_preferences(storage);storage["enhanced.preferences.v3"]=bytes(value);
+}
+Preferences saved(const SavedRecords& storage){
+    Preferences result;
+    if(const auto found=storage.find("enhanced.preferences.v4");found!=storage.end()){
+        assert(found->second.size()==sizeof(result));memcpy(&result,found->second.data(),sizeof(result));
+    }else{
+        auto& legacy=static_cast<PreferencesV3&>(result);
+        const auto& value=storage.at("enhanced.preferences.v3");
+        assert(value.size()==sizeof(legacy));memcpy(&legacy,value.data(),sizeof(legacy));result.infer_selection();
+    }
+    assert(result.valid());return result;
 }
 namespace traits_mock {
 bool expanded=false,menu=true,query_busy=false;
@@ -458,6 +474,7 @@ int main(){
     wchar_t filename[MAX_PATH]{};GetModuleFileNameW(nullptr,filename,MAX_PATH);
     const auto dll=LoadLibraryW((std::filesystem::path(filename).parent_path()/"enhanced_settings.dll").c_str());assert(dll);
     const auto init=reinterpret_cast<San14Result(SAN14_MOD_CALL*)(const San14HostApi*,San14ModApi*)>(GetProcAddress(dll,"SAN14Mod_Initialize"));assert(init);
+    const auto prepare=reinterpret_cast<San14Result(SAN14_MOD_CALL*)(San14ModContext*)>(GetProcAddress(dll,"SAN14Mod_PrepareReloadV1"));assert(prepare);
     San14UiStyleApi style{sizeof(style),SAN14_UI_STYLE_EXPERT|SAN14_UI_STYLE_TINT|SAN14_UI_STYLE_ENABLED|SAN14_UI_STYLE_BUTTON_TEXT_TINT,style_selected,style_help,style_tint,style_enabled};
     San14UiSliderApi sliders{sizeof(sliders),ui_add_slider_fn,ui_set_slider_fn,ui_get_slider_fn};
     San14PagesApi pages{sizeof(pages),pages_register};
@@ -494,7 +511,7 @@ int main(){
     // also updates new-game defaults, but leaves other existing saves alone.
     // Returning discards an unsubmitted draft.
     const auto staged_local=local_storage,staged_global=ui.global_storage;const auto staged_batches=batch_writes;
-    Preferences peer;peer.values[0]=77777;peer.values[101]=66;peer_storage["enhanced.preferences.v3"]=bytes(peer);const auto peer_before=peer_storage;
+    Preferences peer;peer.values[0]=77777;peer.values[101]=66;seed_v3(peer_storage,peer);const auto peer_before=peer_storage;
     assert(!find_button_by_text(top(),u8"保存变更到此存档")&&find_button_by_text(top(),u8"保存变更"));
     auto scope_hint_visible=[&](){for(const auto& item:ui.controls)if(item.second.panel==top()&&item.second.text.find(u8"其他已有存档不变")!=std::string::npos&&item.second.text.find('\n')!=std::string::npos)return true;return false;};
     assert(scope_hint_visible());
@@ -502,7 +519,7 @@ int main(){
     slide(0,160);assert(slider_value(0)==160&&custom_values.at("officer_stat_cap")==100&&range_tint("stat")==0xff1d63c7u&&scope_hint_visible());
     slide(0,100);assert(range_tint("stat")==0xff262018u);slide(0,160);
     assert(local_storage==staged_local&&ui.global_storage==staged_global&&batch_writes==staged_batches);
-    assert(custom_values.at("officer_stat_cap")==100&&slider_value(0)==160);
+    assert(prepare(&ctx)==SAN14_OK&&custom_values.at("officer_stat_cap")==100&&slider_value(0)==160);
     assert(local_storage==staged_local&&ui.global_storage==staged_global); // Preflight never commits the draft.
     click_text(u8"城市");click_text(u8"常规");assert(slider_value(0)==160&&range_tint("stat")==0xff1d63c7u);
     click_text(u8"城市");slide(0,61000);assert(range_tint("city.0")==0xff1d63c7u);
@@ -545,7 +562,7 @@ int main(){
     assert(custom_values.at("city_cap.tribal.gold")==250000&&custom_values.at("formation.14.defense")==21);
     Preferences b;b.enhanced_edit=1;b.extended_merit=1;b.values[20]=180;b.values[19]=8888;b.values[91]=450000;b.values[101]=29;
     const auto batches_before_restore=batch_writes;
-    local_storage["enhanced.preferences.v3"]=bytes(b);++storage_info.revision;fire(SAN14_EVENT_SAVE_LOADED);fire(SAN14_EVENT_UI_IDLE);
+    seed_v3(local_storage,b);++storage_info.revision;fire(SAN14_EVENT_SAVE_LOADED);fire(SAN14_EVENT_UI_IDLE);
     assert(batch_writes==batches_before_restore+1&&custom_values.at("military_intel_cap.1")==450000&&custom_values.at("officer_hire_cap.7")==29&&merit_rule==1);
     click_text(u8"常规");assert(slider_value(0)==180&&edit_rule==1);
     bool selected_yes=false;for(auto& item:ui.controls)if(item.second.panel==top()&&item.second.text==u8"有"&&item.second.selected)selected_yes=true;assert(selected_yes);
@@ -591,7 +608,7 @@ int main(){
         plugin_ui::Runtime runtime(native_backend);
         auto real_host=host;real_host.host_context=&owner;real_host.ui=runtime.api();
         real_host.ui_extended=runtime.extended_api();real_host.ui_style=runtime.style_api();real_host.ui_slider=runtime.slider_api();
-        local_storage["enhanced.preferences.v3"]=bytes(Preferences{});++storage_info.revision;
+        seed_v3(local_storage,Preferences{});++storage_info.revision;
         assert(init(&real_host,&api)==SAN14_OK&&api.on_load(&ctx)==SAN14_OK&&api.on_enable(&ctx)==SAN14_OK);
         assert(ui.registered_page.open(nullptr)==SAN14_OK);
         auto click=[&](const wchar_t* text){
@@ -626,13 +643,17 @@ int main(){
         click(L"20");assert(ui.force_colors.at(1)==20&&ui.set_color_calls==calls_before+1);
         click(L"撤销上次修改");assert(ui.force_colors.at(1)==0);
         click(L"返回");assert(runtime.panel_count()==1&&visible()==1);
+        for(const auto& p:native.panels)for(const auto& c:p.second->texts){
+            const std::wstring caption(c->value);
+            assert(caption!=L"预设"&&caption!=L"读取设定"&&caption!=L"保存为预设");
+        }
         assert(api.on_disable(&ctx)==SAN14_OK&&runtime.panel_count()==0);api.on_unload(&ctx);
         assert(native.created==native.destroyed);
     }
     // Save Changes works without a filename: update the live new session and
     // future defaults, never the other existing save. A Host failure still
     // retains the draft and restores defaults instead of silently falling back.
-    local_storage["enhanced.preferences.v3"]=bytes(Preferences{});++storage_info.revision;
+    seed_v3(local_storage,Preferences{});++storage_info.revision;
     storage_info.save_basename[0]=0;storage_info.state=SAN14_STORAGE_READY;
     assert(init(&host,&api)==SAN14_OK&&api.on_load(&ctx)==SAN14_OK&&api.on_enable(&ctx)==SAN14_OK&&ui.registered_page.open(nullptr)==SAN14_OK);
     const auto peer_before_new=peer_storage;
@@ -670,7 +691,7 @@ int main(){
     assert(api.on_disable(&ctx)==SAN14_OK);api.on_unload(&ctx);query_hire=true;
     auto new_global=Preferences{};new_global.values[20]=190;new_global.values[91]=610000;new_global.values[101]=12;new_global.extended_merit=1;
     auto old_branch=legacy_defaults();old_branch.values[20]=145;
-    ui.global_storage["enhanced.preferences.v3"]=bytes(new_global);local_storage.erase("enhanced.preferences.v3");local_storage["enhanced.preferences.v1"]=bytes(old_branch);
+    seed_v3(ui.global_storage,new_global);clear_preferences(local_storage);local_storage["enhanced.preferences.v1"]=bytes(old_branch);
     assert(init(&host,&api)==SAN14_OK&&api.on_load(&ctx)==SAN14_OK&&api.on_enable(&ctx)==SAN14_OK);
     assert(saved(local_storage).values[20]==145&&saved(local_storage).values[91]==50000&&saved(local_storage).values[101]==5&&saved(local_storage).extended_merit==0);
     assert(custom_values.at("officer_stat_cap")==145&&custom_values.at("military_intel_cap.1")==50000&&custom_values.at("officer_hire_cap.7")==5&&merit_rule==0);
@@ -679,9 +700,9 @@ int main(){
     for(const bool v2:{false,true}){
         auto previous=Preferences{};previous.values[20]=145;previous.values[91]=610000;
         for(size_t i=enhanced_settings_mod::kOfficerHireFirst;i<enhanced_settings_mod::kCustomCount;++i)previous.values[i]=100000;
-        ui.global_storage["enhanced.preferences.v3"]=bytes(previous);
-        if(v2){PreferencesV2 previous_v2;previous_v2.values=previous.values;local_storage.erase("enhanced.preferences.v3");local_storage["enhanced.preferences.v2"]=bytes(previous_v2);}
-        else local_storage["enhanced.preferences.v3"]=bytes(previous);
+        seed_v3(ui.global_storage,previous);
+        if(v2){PreferencesV2 previous_v2;previous_v2.values=previous.values;clear_preferences(local_storage);local_storage["enhanced.preferences.v2"]=bytes(previous_v2);}
+        else seed_v3(local_storage,previous);
         assert(init(&host,&api)==SAN14_OK&&api.on_load(&ctx)==SAN14_OK&&api.on_enable(&ctx)==SAN14_OK);
         assert(saved(ui.global_storage).values[20]==145&&saved(local_storage).values[91]==610000);
         for(size_t i=enhanced_settings_mod::kOfficerHireFirst;i<enhanced_settings_mod::kCustomCount;++i){assert(saved(ui.global_storage).values[i]==100&&saved(local_storage).values[i]==100);}
@@ -690,14 +711,14 @@ int main(){
     }
     local_storage.erase("enhanced.preferences.v2");
     auto enable_failure=Preferences{};enable_failure.enhanced_edit=1;enable_failure.extended_merit=1;
-    local_storage["enhanced.preferences.v3"]=bytes(enable_failure);fail_configure=true;
+    seed_v3(local_storage,enable_failure);fail_configure=true;
     assert(init(&host,&api)==SAN14_OK&&api.on_load(&ctx)==SAN14_OK&&api.on_enable(&ctx)==SAN14_E_BUSY&&edit_rule==0&&merit_rule==0&&custom_values.empty());
     fail_configure=false;assert(api.on_disable(&ctx)==SAN14_OK);api.on_unload(&ctx);
     // A corrupt v3 must never silently fall back to the preserved v1 record.
-    auto invalid=Preferences{};invalid.version=77;local_storage["enhanced.preferences.v3"]=bytes(invalid);
+    auto invalid=Preferences{};invalid.version=77;seed_v3(local_storage,invalid);
     assert(init(&host,&api)==SAN14_OK&&api.on_load(&ctx)==SAN14_OK&&api.on_enable(&ctx)==SAN14_E_INVALID_ARGUMENT&&custom_values.empty());
     assert(api.on_disable(&ctx)==SAN14_OK);api.on_unload(&ctx);
-    local_storage.erase("enhanced.preferences.v3");auto invalid_legacy=legacy_defaults();invalid_legacy.values[20]=999;
+    clear_preferences(local_storage);auto invalid_legacy=legacy_defaults();invalid_legacy.values[20]=999;
     local_storage["enhanced.preferences.v1"]=bytes(invalid_legacy);
     assert(init(&host,&api)==SAN14_OK&&api.on_load(&ctx)==SAN14_OK&&api.on_enable(&ctx)==SAN14_E_INVALID_ARGUMENT&&custom_values.empty());
     assert(api.on_disable(&ctx)==SAN14_OK);api.on_unload(&ctx);
@@ -711,7 +732,7 @@ int main(){
     assert(saved(ui.global_storage).values[20]==181&&saved(ui.global_storage).extended_merit==1&&saved(ui.global_storage).extended_traits==0);
     assert(saved(local_storage).values[20]==149&&saved(local_storage).values[101]==18&&saved(local_storage).extended_merit==0);
     assert(api.on_disable(&ctx)==SAN14_OK);api.on_unload(&ctx);
-    ui.global_storage.erase("enhanced.preferences.v3");v2_global.version=99;ui.global_storage["enhanced.preferences.v2"]=bytes(v2_global);
+    clear_preferences(ui.global_storage);v2_global.version=99;ui.global_storage["enhanced.preferences.v2"]=bytes(v2_global);
     assert(init(&host,&api)==SAN14_OK&&api.on_load(&ctx)==SAN14_OK&&api.on_enable(&ctx)==SAN14_E_INVALID_ARGUMENT);
     assert(api.on_disable(&ctx)==SAN14_OK);api.on_unload(&ctx);
     // Public entries are disabled; keep testing the retained editor directly.
@@ -720,7 +741,7 @@ int main(){
     ui.global_storage.clear();local_storage.clear();traits_mock::values.clear();
     for(uint32_t id=1;id<=12;++id)traits_mock::values[id]={1,2,3,4,5,0,0,0,0};
     auto retained_mode=Preferences{};retained_mode.extended_traits=1;
-    ui.global_storage["enhanced.preferences.v3"]=bytes(retained_mode);
+    seed_v3(ui.global_storage,retained_mode);
     assert(init(&host,&api)==SAN14_OK&&api.on_load(&ctx)==SAN14_OK&&api.on_enable(&ctx)==SAN14_OK);
     assert(ui.registered_page.open(nullptr)==SAN14_OK&&!find_button_by_text(top(),u8"编辑个性"));
     San14ControlHandle previous_label=0;size_t placeholders=0;
@@ -734,7 +755,7 @@ int main(){
     const auto before_mode_change=ui.global_storage;
     assert(traits_setting.changed(nullptr,traits_setting.key,0)==SAN14_E_UNSUPPORTED&&traits_mock::expanded&&ui.global_storage==before_mode_change);
     auto old_save=Preferences{};old_save.extended_traits=0;old_save.values[20]=142;
-    local_storage["enhanced.preferences.v3"]=bytes(old_save);++storage_info.revision;fire(SAN14_EVENT_SAVE_LOADED);fire(SAN14_EVENT_UI_IDLE);
+    seed_v3(local_storage,old_save);++storage_info.revision;fire(SAN14_EVENT_SAVE_LOADED);fire(SAN14_EVENT_UI_IDLE);
     assert(traits_mock::expanded&&custom_values.at("officer_stat_cap")==142&&saved(ui.global_storage).extended_traits==1);
     enhanced_settings_mod::OfficerTraitsDialog retained_editor;retained_editor.bind(&host);
     assert(retained_editor.open()==SAN14_OK&&ui.stack.size()==2&&find_control_by_id(top(),"traits.search"));
@@ -767,7 +788,7 @@ int main(){
     // Expanded mode is applied before other rules/caps, and rolled back if
     // another part of enable fails while still at the title menu.
     local_storage.clear();auto traits_default=Preferences{};traits_default.extended_traits=1;traits_default.extended_merit=1;
-    ui.global_storage["enhanced.preferences.v3"]=bytes(traits_default);fail_configure=true;
+    seed_v3(ui.global_storage,traits_default);fail_configure=true;
     assert(init(&host,&api)==SAN14_OK&&api.on_load(&ctx)==SAN14_OK&&api.on_enable(&ctx)==SAN14_E_BUSY&&!traits_mock::expanded&&merit_rule==0);
     fail_configure=false;assert(api.on_disable(&ctx)==SAN14_OK);api.on_unload(&ctx);
     {
@@ -776,7 +797,7 @@ int main(){
         plugin_ui_test::Fixture native;int owner=0;native.allowed={&owner};auto native_backend=native.styled_backend();native_backend.tint_button_text=plugin_ui_test::Fixture::tint;
         plugin_ui::Runtime runtime(native_backend);
         auto real_host=host;real_host.host_context=&owner;real_host.ui=runtime.api();real_host.ui_extended=runtime.extended_api();real_host.ui_style=runtime.style_api();real_host.ui_slider=runtime.slider_api();
-        local_storage.clear();traits_default.extended_merit=0;ui.global_storage["enhanced.preferences.v3"]=bytes(traits_default);
+        local_storage.clear();traits_default.extended_merit=0;seed_v3(ui.global_storage,traits_default);
         assert(init(&real_host,&api)==SAN14_OK&&api.on_load(&ctx)==SAN14_OK&&api.on_enable(&ctx)==SAN14_OK);
         assert(ui.registered_page.open(nullptr)==SAN14_OK);traits_mock::menu=false;
         const auto click=[&](const wchar_t* text){
@@ -808,7 +829,7 @@ int main(){
         click(L"撤销");assert(traits_mock::values.at(12)[5]==0);click(L"返回");assert(runtime.panel_count()==1&&visible()==1);
         traits_mock::menu=true;assert(api.on_disable(&ctx)==SAN14_OK&&runtime.panel_count()==0);api.on_unload(&ctx);assert(native.created==native.destroyed);
     }
-    local_storage.clear();ui.global_storage["enhanced.preferences.v3"]=bytes(traits_default);traits_mock::menu=false;
+    local_storage.clear();seed_v3(ui.global_storage,traits_default);traits_mock::menu=false;
     assert(init(&host,&api)==SAN14_OK&&api.on_load(&ctx)==SAN14_OK&&api.on_enable(&ctx)==SAN14_E_BUSY);
     assert(custom_values.empty()&&subs.empty()&&!traits_mock::expanded);
     traits_mock::menu=true;assert(api.on_enable(&ctx)==SAN14_OK&&traits_mock::expanded&&custom_specs.size()==102);
@@ -817,16 +838,44 @@ int main(){
     assert(init(&host,&api)==SAN14_OK&&api.on_load(&ctx)==SAN14_OK&&api.on_enable(&ctx)==SAN14_E_BUSY&&custom_values.empty()&&subs.empty());
     traits_mock::query_busy=false;assert(api.on_disable(&ctx)==SAN14_OK);api.on_unload(&ctx);
     host.officer_traits=nullptr;local_storage.clear();
-    ui.global_storage["enhanced.preferences.v3"]=bytes(traits_default);
+    seed_v3(ui.global_storage,traits_default);
     const auto protected_global=ui.global_storage;const auto protected_local=local_storage;const auto before_missing_service=batch_writes;
     assert(init(&host,&api)==SAN14_OK&&api.on_load(&ctx)==SAN14_OK&&api.on_enable(&ctx)==SAN14_E_UNSUPPORTED);
     assert(custom_values.empty()&&subs.empty()&&batch_writes==before_missing_service&&ui.global_storage==protected_global&&local_storage==protected_local);
     assert(api.on_disable(&ctx)==SAN14_OK);api.on_unload(&ctx);
-    auto five_slots=Preferences{};ui.global_storage["enhanced.preferences.v3"]=bytes(five_slots);
+    auto five_slots=Preferences{};seed_v3(ui.global_storage,five_slots);
     assert(init(&host,&api)==SAN14_OK&&api.on_load(&ctx)==SAN14_OK&&api.on_enable(&ctx)==SAN14_OK&&custom_specs.size()==102);
     assert(ui.registered_page.open(nullptr)==SAN14_OK&&!find_button_by_text(top(),u8"编辑个性"));
     assert(api.on_disable(&ctx)==SAN14_OK);api.on_unload(&ctx);
     stats_mock::dialog_tests(host);
+
+    // Settings written by the previous candidate still load and save in their
+    // original format. Existing named preset data stays untouched.
+    storage_info.state=SAN14_STORAGE_READY;
+    strcpy_s(storage_info.save_basename,"svdexceSC00.s14");
+    Preferences new_game;new_game.values[20]=145;new_game.selected.set(20);
+    ui.global_storage["enhanced.preferences.v4"]=bytes(new_game);
+    const std::vector<uint8_t> preset_bytes{1,2,3};
+    ui.global_storage["enhanced.presets.v1"]=preset_bytes;
+    Preferences old_slot;old_slot.values[0]=77000;old_slot.values[20]=110;old_slot.selected.set(0);
+    local_storage["enhanced.preferences.v4"]=bytes(old_slot);
+    ++storage_info.revision;
+    assert(init(&host,&api)==SAN14_OK&&api.on_load(&ctx)==SAN14_OK&&api.on_enable(&ctx)==SAN14_OK);
+    assert(ui.registered_page.open(nullptr)==SAN14_OK);
+    const auto old_disk=local_storage,initial_default_records=ui.global_storage,other_slots=peer_storage;
+    slide(0,155);
+    assert(slider_value(0)==155&&range_tint("stat")==0xff1d63c7u&&custom_values.at("officer_stat_cap")==110);
+    assert(local_storage==old_disk&&ui.global_storage==initial_default_records&&peer_storage==other_slots);
+    fail_saved_edit=true;click_text(u8"保存变更");fail_saved_edit=false;
+    assert(local_storage==old_disk&&ui.global_storage==initial_default_records&&slider_value(0)==155);
+    click_text(u8"保存变更");
+    assert(saved(local_storage).values[20]==155&&saved(local_storage).values[0]==77000);
+    assert(saved(ui.global_storage).values[20]==155&&peer_storage==other_slots);
+
+    click_text(u8"标准");click_text(u8"保存变更");
+    assert(saved(local_storage).values[20]==100&&saved(local_storage).selected.has(20));
+    assert(ui.global_storage.at("enhanced.presets.v1")==preset_bytes);
+    assert(api.on_disable(&ctx)==SAN14_OK);api.on_unload(&ctx);
     FreeLibrary(dll);
-    std::cout<<"Enhanced settings: 102 caps, hire maximum 100 and old preference migration, gray unavailable traits entries at list end, retained editor, rollback and lifecycle passed\n";
+    std::cout<<"Enhanced settings: 102 caps, previous storage formats, native UI, rollback and lifecycle passed\n";
 }

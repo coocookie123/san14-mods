@@ -1,6 +1,7 @@
 #include "san14_mod.h"
 #include "san14_idle.h"
 #include "san14_expert_page.h"
+#include "san14_reload.h"
 #include "settings_model.h"
 #include "pending_settings.h"
 #include "force_color_dialog.h"
@@ -35,6 +36,7 @@ size_t city=0,formation=0;
 San14StringView sv(const std::string& s){return {s.data(),static_cast<uint32_t>(s.size())};}
 San14StringView sv(const char* s){return {s,static_cast<uint32_t>(std::strlen(s))};}
 void check(San14Result r){if(r!=SAN14_OK)throw r;}
+constexpr const char* preferences_key="enhanced.preferences.v4";
 San14Result detect_capabilities(){
     traits_supported=false;
     if(OfficerTraitsDialog::supported(host)){
@@ -67,10 +69,18 @@ San14Result read_preferences(const char* scope,Preferences& out,bool* migrated=n
         return changed;
     };
     Preferences next=out;uint32_t size=0;
-    auto result=read_record(sv("enhanced.preferences.v3"),&next,sizeof(next),&size);
+    auto result=read_record(sv(preferences_key),&next,sizeof(next),&size);
     if(result==SAN14_OK){
-        const bool limited=limit_hire(next.values);
         if(size!=sizeof(next)||!next.valid())return SAN14_E_INVALID_ARGUMENT;
+        out=next;return SAN14_OK;
+    }
+    if(result!=SAN14_E_NOT_FOUND)return result;
+    PreferencesV3 v3;
+    result=read_record(sv("enhanced.preferences.v3"),&v3,sizeof(v3),&size);
+    if(result==SAN14_OK){
+        const bool limited=limit_hire(v3.values);
+        if(size!=sizeof(v3)||!v3.valid())return SAN14_E_INVALID_ARGUMENT;
+        static_cast<PreferencesV3&>(next)=v3;next.infer_selection();
         out=next;if(migrated)*migrated=limited;return SAN14_OK;
     }
     if(result!=SAN14_E_NOT_FOUND)return result;
@@ -79,27 +89,33 @@ San14Result read_preferences(const char* scope,Preferences& out,bool* migrated=n
     if(result==SAN14_OK){
         limit_hire(v2.values);
         if(size!=sizeof(v2)||!migrate_v2(v2,next))return SAN14_E_INVALID_ARGUMENT;
-        out=next;if(migrated)*migrated=true;return SAN14_OK;
+        next.infer_selection();out=next;if(migrated)*migrated=true;return SAN14_OK;
     }
     if(result!=SAN14_E_NOT_FOUND)return result;
     LegacyPreferences legacy;
     result=read_record(sv("enhanced.preferences.v1"),&legacy,sizeof(legacy),&size);
     if(result!=SAN14_OK)return result;
     if(size!=sizeof(legacy)||!migrate_legacy(legacy,next))return SAN14_E_INVALID_ARGUMENT;
-    out=next;if(migrated)*migrated=true;return SAN14_OK;
+    next.infer_selection();out=next;if(migrated)*migrated=true;return SAN14_OK;
 }
 San14Result write_preferences(const char* scope,const Preferences& value){
-    return host->storage.write_atomic(host->host_context,sv(scope),sv("enhanced.preferences.v3"),&value,sizeof(value));
+    return host->storage.write_atomic(host->host_context,sv(scope),sv(preferences_key),&value,sizeof(value));
 }
 San14Result load_archive_defaults(){
     // An existing native file without this Mod's record must not inherit
     // defaults edited later for new games. Keep its original fallback stable.
     archive_defaults=defaults;uint32_t size=0;
-    const auto key=sv("enhanced.archive-defaults.v1");
+    const auto key=sv("enhanced.archive-defaults.v2");
     const auto r=host->storage.read(host->host_context,sv("global"),key,&archive_defaults,sizeof(archive_defaults),&size);
-    if(r==SAN14_E_NOT_FOUND){archive_defaults=defaults;return host->storage.write_atomic(host->host_context,sv("global"),key,&archive_defaults,sizeof(archive_defaults));}
-    if(r!=SAN14_OK)return r;
-    return size==sizeof(archive_defaults)&&archive_defaults.valid()?SAN14_OK:SAN14_E_INVALID_ARGUMENT;
+    if(r==SAN14_OK)return size==sizeof(archive_defaults)&&archive_defaults.valid()?SAN14_OK:SAN14_E_INVALID_ARGUMENT;
+    if(r!=SAN14_E_NOT_FOUND)return r;
+    PreferencesV3 legacy;
+    const auto old=host->storage.read(host->host_context,sv("global"),sv("enhanced.archive-defaults.v1"),&legacy,sizeof(legacy),&size);
+    if(old==SAN14_OK){
+        if(size!=sizeof(legacy)||!legacy.valid())return SAN14_E_INVALID_ARGUMENT;
+        static_cast<PreferencesV3&>(archive_defaults)=legacy;archive_defaults.infer_selection();
+    }else if(old!=SAN14_E_NOT_FOUND)return old;
+    return host->storage.write_atomic(host->host_context,sv("global"),key,&archive_defaults,sizeof(archive_defaults));
 }
 San14Result apply_traits(bool expanded){
     if(!traits_supported)return expanded?SAN14_E_UNSUPPORTED:SAN14_OK;
@@ -191,7 +207,8 @@ bool saved_edit_supported(){
 void update_pending(const std::string& message){
     if(!page)return;const auto count=PendingSettings(current,draft).count();
     update_value_marks();
-    page->footer_status(message.empty()?(count?std::string(u8"有 ")+std::to_string(count)+u8" 项未保存变更，尚未生效；返回将放弃。":u8"调整后点击保存变更；需同步其他已有存档时，选择保存变更到全部存档。") : message,count&&saved_edit_supported());
+    const auto pending=u8" 项未保存变更，尚未生效；返回将放弃。";
+    page->footer_status(message.empty()?(count?std::string(u8"有 ")+std::to_string(count)+pending:u8"调整后点击保存变更；需同步其他已有存档时，选择保存变更到全部存档。") : message,count&&saved_edit_supported());
 }
 San14Result commit(const Preferences& next){
     if(!active)return SAN14_E_BUSY;if(!next.valid())return SAN14_E_INVALID_ARGUMENT;
@@ -202,29 +219,32 @@ San14Result SAN14_MOD_CALL transform_saved(void* context,const San14SavedDataAcc
     const auto& edit=*static_cast<EditTransform*>(context);Preferences next=edit.fallback;
     auto r=read_preferences("playthrough",next,nullptr,access);if(r!=SAN14_OK&&r!=SAN14_E_NOT_FOUND)return r;
     next=edit.patch.merge(next);if(!next.valid())return SAN14_E_INVALID_ARGUMENT;
-    return access->write(access->context,sv("playthrough"),sv("enhanced.preferences.v3"),&next,sizeof(next));
+    return access->write(access->context,sv("playthrough"),sv(preferences_key),&next,sizeof(next));
 }
 San14Result save_pending(uint32_t target){
     auto r=sync();if(r!=SAN14_OK){update_pending(u8"存档忙碌或已切换，请稍后重新编辑。");return r;}
     if(!saved_edit_supported()){update_pending(u8"当前管理器不支持直接保存设置，请更新管理器。");return SAN14_E_UNSUPPORTED;}
     const PendingSettings patch(current,draft);if(!patch.count())return SAN14_OK;
     San14SaveStorageInfo info{sizeof(info)};r=host->save_storage->context(host->host_context,&info);if(r!=SAN14_OK)return r;
+    if(info.revision!=revision){update_pending(u8"存档已切换，请重新编辑。");return SAN14_E_STALE_GENERATION;}
     const bool current_file=info.state==SAN14_STORAGE_READY&&info.save_basename[0];
-    const auto old_defaults=defaults;auto next_defaults=patch.merge(defaults);
+    const auto old_defaults=defaults;
+    const auto next_defaults=patch.merge(defaults);
     r=write_preferences("global",next_defaults);if(r!=SAN14_OK){update_pending(u8"默认设置写入失败，变更仍未提交。");return r;}
+    const auto next=patch.merge(current);
     EditTransform edit{patch,archive_defaults};San14SavedEditResult report{sizeof(report)};
     r=host->save_storage->edit_saved(host->host_context,target,info.revision,transform_saved,&edit,&report);
     // A current-target NOT_FOUND without a filename is the accepted no-save
     // case. Still query the Host first so worker, pending-save and stale
     // revision guards run before applying new-game defaults/live parameters.
     if(r==SAN14_E_NOT_FOUND&&target==SAN14_SAVED_EDIT_CURRENT&&!current_file)
-        r=info.state==SAN14_STORAGE_READY?write_preferences("playthrough",draft):SAN14_OK;
+        r=info.state==SAN14_STORAGE_READY?write_preferences("playthrough",next):SAN14_OK;
     if(r!=SAN14_OK){
         const bool default_failed=write_preferences("global",old_defaults)!=SAN14_OK;
         update_pending(report.rollback_failed||default_failed?u8"保存失败，部分数据未能回退，请保留附加文件备份并核对设置。":u8"保存失败，原有设置已保留，待提交变更仍在。请检查存档与附加文件。");return r;
     }
     defaults=next_defaults;
-    const auto next=draft;r=apply(next,true);current=next;draft=next;
+    r=apply(next,true);current=next;draft=next;
     sync_needed=true;update_rows();page->refresh();
     if(r!=SAN14_OK){update_pending(current_file||target==SAN14_SAVED_EDIT_ALL?u8"设置已保存，当前局应用失败，请重新读取存档。":u8"新局默认已保存，当前应用失败，请重新进入或读取存档。");return r;}
     update_pending(target==SAN14_SAVED_EDIT_CURRENT?u8"已保存变更：当前存档（如有）及新局默认已更新，其他已有存档不变。":std::string(u8"已保存变更到 ")+std::to_string(report.matched_files)+u8" 个存档并应用，已更新新局默认。");return SAN14_OK;
@@ -401,4 +421,12 @@ extern "C" SAN14_MOD_EXPORT San14Result SAN14_MOD_CALL SAN14Mod_Initialize(const
        h->ui_extended.struct_size<offsetof(San14UiExtendedApi,add_text_input)+sizeof(h->ui_extended.add_text_input)||!h->ui_extended.add_text_input)return SAN14_E_UNSUPPORTED;
     if(active)return SAN14_E_BUSY;
     host=h;*out={sizeof(*out),SAN14_HOST_ABI_V1,load,enable,disable,unload};return SAN14_OK;
+}
+
+// All callbacks are Host-owned; no threads, hooks or helper DLLs. Reasserting
+// the committed batch preflights native scenario editors without accepting a
+// pending UI draft. Host additionally requires the true title menu.
+extern "C" SAN14_MOD_EXPORT San14Result SAN14_MOD_CALL SAN14Mod_PrepareReloadV1(San14ModContext*){
+    try{return !host||!active?SAN14_OK:apply(current,true);}
+    catch(...){return SAN14_E_PLUGIN_FAILED;}
 }
