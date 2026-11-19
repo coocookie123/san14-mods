@@ -1,21 +1,25 @@
 {
   "schema_version": 2,
   "id": "two-city-all-stars-mod",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "scenario": {
     "key": "duel",
     "base_id": 1,
     "name": "双城全明星",
-    "description": "曹操与刘备各率二十三名文武组成二十四人全明星阵容，在陈留、许昌决战。预制原生剧本，两城同等初始资源与城防、各六府，保留原版地形。",
+    "description": "曹操与刘备双双称帝，各率二十三名满官职文武组成二十四人全明星阵容，在陈留、许昌决战。开局双方均无外围府，保留原版地形。",
     "native_file": "content/duel.s14"
   },
   "campaign": {
     "start_year": 220,
+    "ruler_title": "emperor",
+    "office_assignment": "max",
     "sides": [
       {
         "city": 15,
         "ruler": "曹操",
         "advisor": "郭嘉",
+        "title": "emperor",
+        "regime": "魏",
         "officers": [
           "曹操",
           "荀彧",
@@ -47,6 +51,8 @@
         "city": 16,
         "ruler": "刘备",
         "advisor": "诸葛亮",
+        "title": "emperor",
+        "regime": "蜀",
         "officers": [
           "刘备",
           "蒋琬",
@@ -84,7 +90,7 @@
       "size": 3
     },
     "prefecture_defaults": {
-      "count": 6,
+      "count": 0,
       "population": 10000,
       "development": 500,
       "public_order": 100,

@@ -8,7 +8,13 @@ import struct
 from native_scenario_codec import unpack, repack
 
 BASE_SHA256 = '79f11f0ccefc2bc4752163941d5fd7b9b7ccf9cf8e952aa00f226c7c4030c93c'
-PREFECTURES = {15: [99, 102, 106, 108, 109, 111], 16: [113, 115, 116, 118, 119, 120]}
+# Capital urban region first (102=陈留, 113=许昌), followed by all 10 external prefectures (府) of each city.
+PREFECTURES = {
+    15: [102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112],
+    16: [113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123],
+}
+TITLES = {'emperor': 1, 'king': 2, 'duke': 3, 'marshal': 4, 'general': 5, 'marquis': 6, 'governor': 7, 'none': 9}
+REGIMES = {'魏': 1, '吴': 2, '蜀': 3, '晋': 4, '仲': 5, '汉': 7, '夏': 8, '商': 9, '周': 10, '秦': 11, '新': 12, '燕': 13, '赵': 14}
 
 def author(reference: bytes, definition: dict) -> tuple[bytes, dict]:
     # All offsets are offline file layout, never process addresses. Refuse other
@@ -35,12 +41,20 @@ def author(reference: bytes, definition: dict) -> tuple[bytes, dict]:
     rulers = [names[s['ruler']] for s in sides]
     advisors = [names[s['advisor']] for s in sides]
     members = {person: side for side, roster in enumerate(rosters) for person in roster}
+    default_title = d.get('ruler_title', 'none')
+    side_titles = [TITLES[s.get('title', default_title)] for s in sides]
     # These arrays include the native zero sentinel. Their counts stay intact.
     for force in range(1, 52):
         at = 5178 + force * 329
         put(at, 'H', rulers[force - 1] if force <= 2 else 0)
         data[at + 2:at + 54] = bytes(100 if other == force else 50 for other in range(52))
-        put(at + 54, 'B', 9)
+        title_code = side_titles[force - 1] if force <= 2 else 9
+        regime_code = 0
+        if force <= 2 and title_code == 1:
+            regime_name = sides[force - 1].get('regime', '')
+            regime_code = REGIMES[regime_name] if regime_name else (1 if force == 1 else 3)
+            put(at + 327, 'H', 3000)
+        put(at + 54, 'BB', title_code, regime_code)
         put(at + 59, 'H', advisors[force - 1] if force <= 2 else 0)
     # Corps source-force/number/leader records; native rebuilding allocates the
     # first two physical corps and reconstructs its own cached force lists.
@@ -79,14 +93,20 @@ def author(reference: bytes, definition: dict) -> tuple[bytes, dict]:
     for building in range(52, 3001):
         put(26534 + building * 6 + 3, 'B', 0)
     prefectures = [PREFECTURES[s['city']] for s in sides]
-    owners = {area: side + 1 for side, rows in enumerate(prefectures) for area in rows}
+    count = d['prefecture_defaults']['count']
+    owned_count = 1 if count == 0 else min(count, min(len(rows) for rows in prefectures))
+    owned_prefectures = [rows[:owned_count] for rows in prefectures]
+    all_areas = {area for rows in prefectures for area in rows}
+    owners = {area: side + 1 for side, rows in enumerate(owned_prefectures) for area in rows}
     for area in range(1, 501):
         at = 22518 + area * 8
-        put(at, 'HBBB', d['prefecture_defaults']['population'] if area in owners else 0,
+        put(at, 'HBBB', d['prefecture_defaults']['population'] if area in all_areas else 0,
             d['prefecture_defaults']['public_order'], owners.get(area, 0), 0)
     # CScenarioData's fixed 9-code-unit caption and native five-byte dates.
     caption = definition['scenario']['name'].encode('utf-16le')
     data[771830:771848] = caption.ljust(18, b'\0')
+    if 1 in side_titles:
+        put(771852, 'H', 0)
     for at in (771863, 771868):
         put(at, 'HBBB', d['start_year'], 1, 1, 0)
     header = bytearray(reference)
@@ -96,7 +116,9 @@ def author(reference: bytes, definition: dict) -> tuple[bytes, dict]:
     result = repack(bytes(header), bytes(data))
     report = {'base_sha256': BASE_SHA256, 'sha256': hashlib.sha256(result).hexdigest(),
               'bytes': len(result), 'payload_bytes': len(data), 'rosters': rosters,
-              'rulers': rulers, 'advisors': advisors, 'prefectures': prefectures,
+              'rulers': rulers, 'advisors': advisors, 'prefectures': owned_prefectures,
+              'jurisdiction_areas': prefectures, 'titles': side_titles,
+              'office_assignment': d.get('office_assignment', 'none'),
               'terrain': 'unchanged', 'native_initialization': True}
     return result, report
 

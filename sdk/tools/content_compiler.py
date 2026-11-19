@@ -104,9 +104,12 @@ def validate_definition(data):
             raise ValueError('Campaign rosters and capitals must be distinct')
         if len(sides[0]['officers']) != len(sides[1]['officers']):
             raise ValueError('Duel rosters must have equal sizes')
+        default_title = data['campaign'].get('ruler_title', 'none')
         for side in sides:
             if side['ruler'] not in side['officers'] or side['advisor'] not in side['officers']:
                 raise ValueError('Ruler and advisor must belong to their roster')
+            if 'regime' in side and side.get('title', default_title) != 'emperor':
+                raise ValueError('Imperial regime requires emperor title')
             for name in side['officers']:
                 if len(name.encode('utf-16-le')) > 32 or any(ord(c) < 32 for c in name):
                     raise ValueError('Invalid campaign officer name')

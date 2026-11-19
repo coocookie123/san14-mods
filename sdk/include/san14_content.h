@@ -16,7 +16,10 @@ enum San14ContentCapability {
     SAN14_CONTENT_DUEL_CAMPAIGN = 128,
     /* schema v2 scenario.native_file: an attested, bundled native .s14 file.
        The engine reads it before rebuilding its own IDs and force lists. */
-    SAN14_CONTENT_NATIVE_SCENARIO_FILE = 256
+    SAN14_CONTENT_NATIVE_SCENARIO_FILE = 256,
+    /* schema v2 campaign court & zero-prefecture rules: ruler_title/title,
+       imperial regime, office_assignment="max", and prefecture_defaults.count=0. */
+    SAN14_CONTENT_CAMPAIGN_COURT = 512
 };
 enum San14ContentRecordKind { SAN14_CONTENT_OFFICER=1, SAN14_CONTENT_TRAIT=2, SAN14_CONTENT_PORTRAIT=3 };
 enum San14ContentPhase {

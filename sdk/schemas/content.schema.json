@@ -452,6 +452,26 @@
           "minimum": 200,
           "maximum": 300
         },
+        "ruler_title": {
+          "type": "string",
+          "enum": [
+            "none",
+            "governor",
+            "marquis",
+            "general",
+            "marshal",
+            "duke",
+            "king",
+            "emperor"
+          ]
+        },
+        "office_assignment": {
+          "type": "string",
+          "enum": [
+            "none",
+            "max"
+          ]
+        },
         "sides": {
           "type": "array",
           "minItems": 2,
@@ -476,6 +496,32 @@
                 "minLength": 1,
                 "maxLength": 16,
                 "pattern": "^[^\\u0000-\\u001f]*$"
+              },
+              "title": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "governor",
+                  "marquis",
+                  "general",
+                  "marshal",
+                  "duke",
+                  "king",
+                  "emperor"
+                ]
+              },
+              "regime": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2,
+                "pattern": "^[^\\u0000-\\u001f]*$"
+              },
+              "office_assignment": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "max"
+                ]
               },
               "officers": {
                 "type": "array",
@@ -548,7 +594,7 @@
           "properties": {
             "count": {
               "type": "integer",
-              "minimum": 1,
+              "minimum": 0,
               "maximum": 16
             },
             "population": {
