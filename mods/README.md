@@ -11,4 +11,4 @@
 | default | [MCP](default/mcp-mod/) | `mcp-mod` | 0.2.0 |
 | default | [存档数据统计](default/save-stats-mod/) | `save-stats-mod` | 0.2.0 |
 | optional | [一千个曹操](optional/officer-temperament-mod/) | `officer-temperament-mod` | 0.1.1 |
-| optional | [双城全明星对战](optional/two-city-all-stars-mod/) | `two-city-all-stars-mod` | 0.1.1 |
+| optional | [双城全明星对战](optional/two-city-all-stars-mod/) | `two-city-all-stars-mod` | 0.2.0 |

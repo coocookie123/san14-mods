@@ -63,5 +63,25 @@ class PackagingTests(unittest.TestCase):
                 self.assertEqual({name:archive.read(name) for name in archive.namelist()},expected)
                 self.assertFalse(any('/optional/' in name or name.endswith('.cpp') for name in archive.namelist()))
 
+    def test_two_city_all_stars_duel_definition_is_balanced_and_valid(self):
+        project=ROOT/'mods/optional/two-city-all-stars-mod'
+        manifest=package.read(project/'mod.json')
+        definition=package.read(project/manifest['entry']['path'])
+        self.assertEqual(manifest['id'],'two-city-all-stars-mod')
+        self.assertEqual(manifest['version'],'0.2.0')
+        self.assertEqual(definition['version'],manifest['version'])
+        self.assertLessEqual(len(definition['scenario']['name']),8)
+        self.assertLessEqual(len(definition['scenario']['description'].encode('utf-16le')),402)
+        sides=definition['campaign']['sides']
+        self.assertEqual([s['city'] for s in sides],[15,16])
+        self.assertEqual([len(s['officers']) for s in sides],[24,24])
+        self.assertEqual(len({n for s in sides for n in s['officers']}),48)
+        for side in sides:
+            self.assertIn(side['ruler'],side['officers'])
+            self.assertIn(side['advisor'],side['officers'])
+        defaults=definition['campaign']['city_defaults']
+        self.assertEqual(defaults['durability'],3800)
+        self.assertEqual(defaults['troops'],90000)
+
 
 if __name__=='__main__':unittest.main()

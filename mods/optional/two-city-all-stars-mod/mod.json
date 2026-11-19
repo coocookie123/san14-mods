@@ -2,10 +2,10 @@
   "schema_version": 1,
   "id": "two-city-all-stars-mod",
   "name": "双城全明星对战",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "author": "SAN14 Mod Project",
-  "summary": "刘备与曹操各率五文五武，双城公平条件对战。",
-  "description": "陈留曹操、许昌刘备；每方君主另带五文五武。府数与基础经济配对，完整保留原生地形、通行与建设规则。仅在主菜单启用，开始新局。",
+  "summary": "曹操与刘备各率23名文武组成24人全明星阵容，双城公平条件对战。",
+  "description": "陈留曹操、许昌刘备；每方君主另带23名文武（共24人全明星阵容）。两城同等初始资源与城防、各六府，屏蔽界外城池与关隘，完整保留原生地形、通行与建设规则。仅在主菜单启用，开始新局。",
   "entry": {
     "type": "content",
     "path": "content/scenario.json"
