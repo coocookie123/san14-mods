@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "id": "mcp-mod",
+  "name": "MCP",
+  "version": "0.2.0",
+  "author": "清都jsl",
+  "author_url": "https://space.bilibili.com/3690994744691528",
+  "description": "可选的本机 MCP 连接服务。启用后监听 127.0.0.1:8765；通过共享 Base 执行已验证的游戏查询和命令。",
+  "entry": {
+    "type": "native",
+    "path": "bin/win-x64/mcp.dll",
+    "abi": 1
+  },
+  "host_version": ">=0.2.0 <0.3.0",
+  "dependencies": [],
+  "conflicts": [],
+  "permissions": [
+    "network",
+    "game.commands",
+    "game.read.officers",
+    "game.read.forces",
+    "game.read.cities",
+    "game.read.units",
+    "game.read.saves",
+    "ui.panel"
+  ],
+  "default_enabled": false,
+  "disable_mode": "hot",
+  "load_order": 60,
+  "source_url": "https://github.com/zhaoqxu/san14-mods/tree/main/mods/default/mcp-mod"
+}

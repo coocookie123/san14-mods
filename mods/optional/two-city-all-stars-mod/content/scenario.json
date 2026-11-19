@@ -1,0 +1,79 @@
+{
+  "schema_version": 2,
+  "id": "two-city-all-stars-mod",
+  "version": "0.1.0",
+  "scenario": {
+    "key": "duel",
+    "base_id": 1,
+    "name": "双城全明星",
+    "description": "曹操与刘备各率五文五武，在陈留、许昌决战。预制原生剧本，两城同等初始资源、各六府。保留原版地形。",
+    "native_file": "content/duel.s14"
+  },
+  "campaign": {
+    "start_year": 220,
+    "sides": [
+      {
+        "city": 15,
+        "ruler": "曹操",
+        "advisor": "郭嘉",
+        "officers": [
+          "曹操",
+          "荀彧",
+          "荀攸",
+          "郭嘉",
+          "贾诩",
+          "司马懿",
+          "张辽",
+          "徐晃",
+          "曹仁",
+          "夏侯惇",
+          "夏侯渊"
+        ]
+      },
+      {
+        "city": 16,
+        "ruler": "刘备",
+        "advisor": "诸葛亮",
+        "officers": [
+          "刘备",
+          "诸葛亮",
+          "庞统",
+          "法正",
+          "徐庶",
+          "蒋琬",
+          "关羽",
+          "张飞",
+          "赵云",
+          "马超",
+          "黄忠"
+        ]
+      }
+    ],
+    "city_defaults": {
+      "gold": 30000,
+      "food": 240000,
+      "troops": 60000,
+      "morale": 100,
+      "durability": 6000,
+      "size": 3
+    },
+    "prefecture_defaults": {
+      "count": 6,
+      "population": 10000,
+      "development": 500,
+      "public_order": 100,
+      "income": [
+        600,
+        1200,
+        200
+      ]
+    },
+    "battlefield": {
+      "mode": "native_map"
+    },
+    "rules": {
+      "natural_death": false,
+      "historical_events": false
+    }
+  }
+}

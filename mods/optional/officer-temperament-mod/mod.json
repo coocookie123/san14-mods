@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "id": "officer-temperament-mod",
+  "name": "一千个曹操",
+  "version": "0.1.0",
+  "description": "让战局中所有武将的情义、野心、汉室倾向、好战、外交、物资偏好和建设倾向与曹操一致。请在主菜单启用或停用。",
+  "entry": {
+    "type": "native",
+    "path": "bin/win-x64/officer_temperament.dll",
+    "abi": 1
+  },
+  "host_version": ">=0.2.1 <1.0.0",
+  "game_builds": [
+    25953386
+  ],
+  "game_exe_sha256": [
+    "2e49348aa1b9be5cfca651e71c8d77b2e4bd2d11387edc0b0236f4352458a239"
+  ],
+  "dependencies": [],
+  "conflicts": [],
+  "permissions": [
+    "game.rules"
+  ],
+  "default_enabled": false,
+  "disable_mode": "main_menu",
+  "source_url": "https://github.com/zhaoqxu/san14-mods/tree/main/mods/optional/officer-temperament-mod"
+}

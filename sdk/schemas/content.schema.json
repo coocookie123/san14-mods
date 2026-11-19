@@ -1,0 +1,692 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SAN14 declarative content v2 (expanded tables)",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "compiled": {
+      "type": "boolean"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9._-]{1,64}$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "officer_stat_cap": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 255
+    },
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "type": "string",
+          "pattern": "^[a-z0-9._-]{1,64}$"
+        },
+        "base_id": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 199
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8,
+          "pattern": "^[^\\u0000-\\u001f]*$"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "pattern": "^[^\\u0000-\\u001f]*$"
+        },
+        "native_file": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 220
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path",
+                "sha256"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 220
+                },
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "required": [
+        "key",
+        "base_id",
+        "name",
+        "description"
+      ]
+    },
+    "officers": {
+      "type": "array",
+      "maxItems": 1850,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^[a-z0-9._-]{1,64}$"
+          },
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 6000
+          },
+          "surname": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 8,
+            "pattern": "^[^\\u0000-\\u001f]*$"
+          },
+          "given": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 8,
+            "pattern": "^[^\\u0000-\\u001f]*$"
+          },
+          "courtesy": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 8,
+            "pattern": "^[^\\u0000-\\u001f]*$"
+          },
+          "stats": {
+            "type": "array",
+            "minItems": 5,
+            "maxItems": 5,
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            }
+          },
+          "city": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 51
+          },
+          "portrait": {
+            "type": "string",
+            "minLength": 1
+          },
+          "traits": {
+            "type": "array",
+            "maxItems": 9,
+            "uniqueItems": true,
+            "items": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9._-]{1,64}$"
+                },
+                {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 355
+                }
+              ]
+            }
+          }
+        },
+        "required": [],
+        "oneOf": [
+          {
+            "required": [
+              "key"
+            ],
+            "not": {
+              "required": [
+                "id"
+              ]
+            }
+          },
+          {
+            "required": [
+              "id"
+            ],
+            "not": {
+              "required": [
+                "key"
+              ]
+            }
+          }
+        ],
+        "allOf": [
+          {
+            "if": {
+              "required": [
+                "key"
+              ]
+            },
+            "then": {
+              "required": [
+                "surname",
+                "given",
+                "courtesy",
+                "stats",
+                "city"
+              ]
+            },
+            "else": {
+              "not": {
+                "required": [
+                  "city"
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "traits": {
+      "type": "array",
+      "maxItems": 355,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^[a-z0-9._-]{1,64}$"
+          },
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 255
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4,
+            "pattern": "^[^\\u0000-\\u001f]*$"
+          },
+          "effect_source_id": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 255
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "oneOf": [
+          {
+            "required": [
+              "key"
+            ],
+            "not": {
+              "required": [
+                "id"
+              ]
+            }
+          },
+          {
+            "required": [
+              "id"
+            ],
+            "not": {
+              "required": [
+                "key"
+              ]
+            }
+          }
+        ],
+        "allOf": [
+          {
+            "if": {
+              "required": [
+                "key"
+              ]
+            },
+            "then": {
+              "required": [
+                "effect_source_id"
+              ]
+            },
+            "else": {
+              "not": {
+                "required": [
+                  "effect_source_id"
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "cities": {
+      "type": "array",
+      "maxItems": 51,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 51
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 3,
+            "pattern": "^[^\\u0000-\\u001f]*$"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      }
+    },
+    "posts": {
+      "type": "array",
+      "maxItems": 72,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 72
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4,
+            "pattern": "^[^\\u0000-\\u001f]*$"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      }
+    },
+    "formations": {
+      "type": "array",
+      "maxItems": 14,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 14
+          },
+          "mobility": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "attack": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "siege": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "demolition": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "defense": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "resources": {
+      "type": "array",
+      "maxItems": 512,
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "key": {
+                "type": "string",
+                "pattern": "^[a-z0-9._-]{1,64}$"
+              },
+              "role": {
+                "const": "portrait"
+              },
+              "source": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "key",
+              "role",
+              "source"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "key": {
+                "type": "string",
+                "pattern": "^[a-z0-9._-]{1,64}$"
+              },
+              "role": {
+                "const": "portrait"
+              },
+              "path": {
+                "type": "string",
+                "pattern": "^__san14_content__/[0-9a-f]{64}\\.g1t$"
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "uv": {
+                "type": "array",
+                "minItems": 8,
+                "maxItems": 8,
+                "items": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              }
+            },
+            "required": [
+              "key",
+              "role",
+              "path",
+              "sha256",
+              "uv"
+            ]
+          }
+        ]
+      }
+    },
+    "campaign": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "start_year": {
+          "type": "integer",
+          "minimum": 200,
+          "maximum": 300
+        },
+        "sides": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "city": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 46
+              },
+              "ruler": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 16,
+                "pattern": "^[^\\u0000-\\u001f]*$"
+              },
+              "advisor": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 16,
+                "pattern": "^[^\\u0000-\\u001f]*$"
+              },
+              "officers": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 64,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 16,
+                  "pattern": "^[^\\u0000-\\u001f]*$"
+                }
+              }
+            },
+            "required": [
+              "city",
+              "ruler",
+              "advisor",
+              "officers"
+            ]
+          }
+        },
+        "city_defaults": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "gold": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9999999
+            },
+            "food": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9999999
+            },
+            "troops": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100000
+            },
+            "morale": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "durability": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9999
+            },
+            "size": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4
+            }
+          },
+          "required": [
+            "gold",
+            "food",
+            "troops",
+            "morale",
+            "durability",
+            "size"
+          ]
+        },
+        "prefecture_defaults": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "count": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 16
+            },
+            "population": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "development": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000
+            },
+            "public_order": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "income": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 65535
+              },
+              "description": "Base gold/food/recruit coefficients; native development, officers and policies still apply."
+            }
+          },
+          "required": [
+            "count",
+            "population",
+            "development",
+            "public_order",
+            "income"
+          ]
+        },
+        "battlefield": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "const": "native_map"
+            }
+          },
+          "required": [
+            "mode"
+          ]
+        },
+        "rules": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "natural_death": {
+              "type": "boolean"
+            },
+            "historical_events": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "natural_death",
+            "historical_events"
+          ]
+        }
+      },
+      "required": [
+        "start_year",
+        "sides",
+        "city_defaults",
+        "prefecture_defaults",
+        "battlefield",
+        "rules"
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "version",
+    "scenario"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "compiled": {
+            "const": true
+          }
+        },
+        "required": [
+          "compiled"
+        ]
+      },
+      "then": {
+        "properties": {
+          "resources": {
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9._-]{1,64}$"
+                },
+                "role": {
+                  "const": "portrait"
+                },
+                "path": {
+                  "type": "string",
+                  "pattern": "^__san14_content__/[0-9a-f]{64}\\.g1t$"
+                },
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "uv": {
+                  "type": "array",
+                  "minItems": 8,
+                  "maxItems": 8,
+                  "items": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  }
+                }
+              },
+              "required": [
+                "key",
+                "role",
+                "path",
+                "sha256",
+                "uv"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

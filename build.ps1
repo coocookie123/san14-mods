@@ -1,0 +1,67 @@
+param(
+    [ValidateSet('all','manager','worker','mods')][string]$Target='all',
+    [string[]]$Mod=@(),
+    [switch]$IncludeOptional,
+    [switch]$Tests,
+    [string]$CompilerRoot=$env:SAN14_MSVC_ROOT,
+    [string]$Python='',
+    [string]$ArtifactRoot='',
+    [string]$ScenarioFile=''
+)
+$ErrorActionPreference='Stop'
+$root=$PSScriptRoot
+if(-not $Python){$Python=Join-Path $root '.venv/Scripts/python.exe'}
+if(-not $ArtifactRoot){$ArtifactRoot=Join-Path $root 'build/current'}
+if(-not [IO.Path]::IsPathRooted($ArtifactRoot)){$ArtifactRoot=Join-Path $root $ArtifactRoot}
+$ArtifactRoot=[IO.Path]::GetFullPath($ArtifactRoot)
+$Python=(Resolve-Path -LiteralPath $Python).Path
+if(-not $ArtifactRoot.StartsWith((Join-Path $root 'build')+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)){
+    throw 'ArtifactRoot must be under this checkout build/'
+}
+$sdk=Join-Path $root 'sdk'
+$worker=Join-Path $ArtifactRoot 'SAN14Base/worker'
+$oldPath=$env:PATH
+$oldCache=$env:PYINSTALLER_CONFIG_DIR
+try{
+    $env:PATH=(Split-Path -Parent $Python)+';'+$env:PATH
+    $env:PYINSTALLER_CONFIG_DIR=Join-Path $ArtifactRoot 'pyinstaller-cache'
+    if($Target -in @('all','worker')){
+        & $Python -B (Join-Path $root 'manager/worker/build_worker.py') --output $worker
+        if($LASTEXITCODE){throw 'Worker build failed'}
+    }
+    if($Target -in @('all','manager')){
+        $manifest=Join-Path $worker 'worker.integrity.json'
+        if(-not (Test-Path -LiteralPath $manifest)){throw 'Build the Worker in this ArtifactRoot before building its pinned Host'}
+        & (Join-Path $root 'manager/build.ps1') -SdkRoot $sdk -CompilerRoot $CompilerRoot -WorkerManifest $manifest -ArtifactRoot $ArtifactRoot -Tests:$Tests
+        if($LASTEXITCODE){throw 'Manager build failed'}
+        if($Tests){
+            & $Python -B (Join-Path $root 'manager/worker/tests/smoke_worker.py') (Join-Path $ArtifactRoot 'native/worker-probe.exe') (Join-Path $ArtifactRoot 'SAN14Base')
+            if($LASTEXITCODE){throw 'Host and Worker integration failed'}
+        }
+    }
+    if($Target -in @('all','mods')){
+        if($Tests){
+            & $Python -B (Join-Path $root 'tests/test_packaging.py')
+            if($LASTEXITCODE){throw 'Mod packaging tests failed'}
+        }
+        $modArgs=@('--root',$root,'--output',$ArtifactRoot)
+        if($IncludeOptional){$modArgs+='--include-optional'}
+        foreach($name in $Mod){$modArgs+=@('--mod',$name)}
+        $selected=& $Python -B (Join-Path $root 'tools/package.py') @modArgs --list
+        if($LASTEXITCODE){throw 'Cannot resolve requested Mods'}
+        $selected=($selected -join '') | ConvertFrom-Json
+        foreach($item in $selected){
+            $project=Join-Path $root $item.path
+            if($item.type -eq 'native'){
+                & (Join-Path $project 'build.ps1') -SdkRoot $sdk -CompilerRoot $CompilerRoot -Tests:$Tests
+                if($LASTEXITCODE){throw "Build failed: $($item.id)"}
+            } elseif($item.id -eq 'two-city-all-stars-mod'){
+                if(-not $ScenarioFile){throw 'The optional two-city package requires -ScenarioFile with your original CE scenario 01'}
+                & $Python -B (Join-Path $project 'tools/build_duel_scenario.py') $ScenarioFile (Join-Path $project 'content/scenario.json') -o (Join-Path $ArtifactRoot 'authored/two-city-all-stars-mod/content/duel.s14')
+                if($LASTEXITCODE){throw 'Two-city scenario authoring failed'}
+            }
+        }
+        & $Python -B (Join-Path $root 'tools/package.py') @modArgs
+        if($LASTEXITCODE){throw 'Mod packaging failed'}
+    }
+}finally{$env:PATH=$oldPath;$env:PYINSTALLER_CONFIG_DIR=$oldCache}

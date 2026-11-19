@@ -1,0 +1,56 @@
+[
+  {
+    "key": "leader",
+    "surname": "青衣",
+    "given": "新将",
+    "courtesy": "试验",
+    "stats": [
+      150,
+      145,
+      135,
+      125,
+      115
+    ],
+    "city": 1,
+    "portrait": "leader-face",
+    "traits": [
+      "test-water",
+      "test-command"
+    ]
+  },
+  {
+    "key": "scholar",
+    "surname": "青衣",
+    "given": "文士",
+    "courtesy": "通用",
+    "stats": [
+      85,
+      76,
+      140,
+      155,
+      90
+    ],
+    "city": 1,
+    "portrait": "scholar-face",
+    "traits": [
+      "test-command"
+    ]
+  },
+  {
+    "id": 1,
+    "surname": "青衣",
+    "given": "旧将",
+    "stats": [
+      255,
+      200,
+      180,
+      160,
+      140
+    ],
+    "portrait": "leader-face",
+    "traits": [
+      "test-water",
+      12
+    ]
+  }
+]

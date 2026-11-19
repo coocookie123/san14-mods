@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "id": "example.content-scenario",
+  "name": "SDK 内容包示例",
+  "version": "0.1.0",
+  "author": "清都jsl",
+  "description": "声明式 JSON 与包内 PNG 示例；先在主菜单启用。",
+  "entry": {
+    "type": "content",
+    "path": "content/scenario.json"
+  },
+  "host_version": ">=0.2.0 <0.3.0",
+  "game_builds": [
+    25953386
+  ],
+  "dependencies": [],
+  "conflicts": [],
+  "permissions": [
+    "game.content"
+  ],
+  "default_enabled": false,
+  "disable_mode": "hot"
+}

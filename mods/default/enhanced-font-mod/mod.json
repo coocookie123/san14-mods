@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "id": "enhanced-font-mod",
+  "name": "增强字体",
+  "version": "1.0.0",
+  "author": "年糕",
+  "author_url": "https://tieba.baidu.com/p/11145759548",
+  "source_url": "https://github.com/zhaoqxu/san14-mods/tree/main/mods/default/enhanced-font-mod",
+  "contributors": [
+    {
+      "name": "清都jsl",
+      "url": "https://space.bilibili.com/3690994744691528"
+    }
+  ],
+  "summary": "以双倍分辨率文字缓存改善清晰度，保持界面原有大小。",
+  "description": "通过 Host 的文字渲染服务改善文字缓存清晰度，保持界面原有大小。在设置中切换“增强文本分辨率”，修改后重启游戏生效。作者：年糕（点击姓名打开原帖）。贡献者：清都jsl（点击姓名打开主页；负责 SDK 接入与移植）。",
+  "entry": {
+    "type": "native",
+    "path": "bin/win-x64/enhanced_font.dll",
+    "abi": 1
+  },
+  "host_version": ">=0.2.0 <0.3.0",
+  "dependencies": [],
+  "conflicts": [],
+  "permissions": [
+    "game.rules",
+    "settings"
+  ],
+  "default_enabled": true,
+  "disable_mode": "restart",
+  "load_order": 40
+}

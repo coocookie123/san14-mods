@@ -1,0 +1,45 @@
+{
+  "schema_version": 2,
+  "id": "example.content-scenario",
+  "version": "0.1.0",
+  "scenario": {
+    "key": "main",
+    "base_id": 1,
+    "name": "青衣演示战局",
+    "description": "青衣通用剧本示例：包内定义多个新人物、两种新个性、独立头像与名称。主菜单停用后恢复。"
+  },
+  "officers": "content/officers.json",
+  "traits": "content/traits.json",
+  "cities": "content/cities.json",
+  "posts": [
+    {
+      "id": 1,
+      "name": "青衣相国"
+    },
+    {
+      "id": 2,
+      "name": "青衣军师"
+    }
+  ],
+  "formations": [
+    {
+      "id": 1,
+      "mobility": 30,
+      "attack": 45,
+      "defense": 40
+    }
+  ],
+  "officer_stat_cap": 255,
+  "resources": [
+    {
+      "key": "leader-face",
+      "role": "portrait",
+      "source": "resources/portraits/leader.png"
+    },
+    {
+      "key": "scholar-face",
+      "role": "portrait",
+      "source": "resources/portraits/scholar.png"
+    }
+  ]
+}

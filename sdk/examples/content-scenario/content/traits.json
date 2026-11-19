@@ -1,0 +1,16 @@
+[
+  {
+    "key": "test-water",
+    "name": "青水",
+    "effect_source_id": 11
+  },
+  {
+    "key": "test-command",
+    "name": "青策",
+    "effect_source_id": 12
+  },
+  {
+    "id": 11,
+    "name": "青衣水战"
+  }
+]

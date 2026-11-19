@@ -1,0 +1,7 @@
+/build/
+/bin/
+*.s14mod
+*.s14
+__pycache__/
+*.pyc
+.env

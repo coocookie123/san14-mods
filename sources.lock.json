@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "kind": "vendored-source-provenance",
+  "components": [
+    {
+      "name": "san14-mod-sdk",
+      "path": "sdk",
+      "repository": "https://github.com/zhaoqxu/san14-mod-sdk",
+      "commit": "4d40d8e935c58d00fb998762d373a1fb91519d6a",
+      "source_ref": "codex/release-0.2.1"
+    },
+    {
+      "name": "san14-companion-mod",
+      "path": "mods/default/companion-mod",
+      "repository": "https://github.com/zhaoqxu/san14-companion-mod",
+      "commit": "fab24af954c23257190d32dcd0b36ad6609ceb65",
+      "source_ref": "main"
+    },
+    {
+      "name": "san14-save-stats-mod",
+      "path": "mods/default/save-stats-mod",
+      "repository": "https://github.com/zhaoqxu/san14-save-stats-mod",
+      "commit": "43e9b29527e50cf9878307b4c7dfbc92c2b4968d",
+      "source_ref": "main"
+    },
+    {
+      "name": "san14-enhanced-ai-logic-mod",
+      "path": "mods/default/ai-iq-mod",
+      "repository": "https://github.com/zhaoqxu/san14-enhanced-ai-logic-mod",
+      "commit": "15c910f1ecd912af6de10248d2da4d0fde43421a",
+      "source_ref": "codex/release-0.2.1"
+    },
+    {
+      "name": "san14-enhanced-font-mod",
+      "path": "mods/default/enhanced-font-mod",
+      "repository": "https://github.com/zhaoqxu/san14-enhanced-font-mod",
+      "commit": "aacd1981312a208ca965861ce18ba0fe5280472d",
+      "source_ref": "main"
+    },
+    {
+      "name": "san14-enhanced-settings-edits-mod",
+      "path": "mods/default/enhanced-settings-mod",
+      "repository": "https://github.com/zhaoqxu/san14-enhanced-settings-edits-mod",
+      "commit": "26db86508283c407c9792909c822ecd85d9ed947",
+      "source_ref": "codex/release-0.2.1"
+    },
+    {
+      "name": "san14-mcp-mod",
+      "path": "mods/default/mcp-mod",
+      "repository": "https://github.com/zhaoqxu/san14-mcp-mod",
+      "commit": "3c28a6a8391b779bf6f48d23eaae086f04c31910",
+      "source_ref": "main"
+    },
+    {
+      "name": "san14-two-city-battle-mod",
+      "path": "mods/optional/two-city-all-stars-mod",
+      "repository": "https://github.com/zhaoqxu/san14-two-city-battle-mod",
+      "commit": "0417233c404b599ed05ec79062e58b30e1767254",
+      "source_ref": "main"
+    },
+    {
+      "name": "san14-mod-manager-and-semantic-worker",
+      "path": "manager",
+      "repository": "https://github.com/zhaoqxu/san14-game-adapter",
+      "commit": "72678c00df9446cef06bd4cd808524fb5e0f34a2",
+      "scope": "address-free integration/manager snapshot only"
+    },
+    {
+      "name": "officer-temperament",
+      "path": "mods/optional/officer-temperament-mod",
+      "commit": "1411e8b499bc89c879a77dcd32a8fbcd9486ae71",
+      "sdk_overlay": [
+        "sdk/include/san14_world.h",
+        "sdk/include/san14_officer_temperament.h",
+        "sdk/schemas/mod.schema.json"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "id": "example.hello-world",
+  "name": "Hello World",
+  "version": "1.0.0",
+  "author": "Example Author",
+  "description": "SAN14 标准插件最小示例。",
+  "entry": {
+    "type": "native",
+    "path": "bin/win-x64/hello_world.dll",
+    "abi": 1
+  },
+  "host_version": ">=0.2.0 <0.3.0",
+  "dependencies": [],
+  "conflicts": [],
+  "permissions": [],
+  "load_order": 100,
+  "default_enabled": false,
+  "disable_mode": "hot"
+}

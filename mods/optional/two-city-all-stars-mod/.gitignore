@@ -1,0 +1,9 @@
+/build/
+/bin/
+*.s14mod
+*.s14
+/content/duel.json
+/content/duel-swapped.json
+__pycache__/
+*.pyc
+.env

@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "id": "two-city-all-stars-mod",
+  "name": "双城全明星对战",
+  "version": "0.1.0",
+  "author": "SAN14 Mod Project",
+  "summary": "刘备与曹操各率五文五武，双城公平条件对战。",
+  "description": "陈留曹操、许昌刘备；每方君主另带五文五武。府数与基础经济配对，完整保留原生地形、通行与建设规则。仅在主菜单启用，开始新局。",
+  "entry": {
+    "type": "content",
+    "path": "content/scenario.json"
+  },
+  "host_version": ">=0.2.0 <0.3.0",
+  "game_builds": [
+    25953386
+  ],
+  "dependencies": [],
+  "conflicts": [],
+  "permissions": [
+    "game.content"
+  ],
+  "load_order": 150,
+  "default_enabled": false,
+  "disable_mode": "hot",
+  "source_url": "https://github.com/zhaoqxu/san14-mods/tree/main/mods/optional/two-city-all-stars-mod"
+}

@@ -1,0 +1,8 @@
+{
+  "name": "san14-two-city-battle-mod",
+  "version": "0.1.0",
+  "kind": "content",
+  "sdk": "san14-mod-sdk",
+  "sdk_version": "0.2.0",
+  "requires_local_game_scenario": true
+}
