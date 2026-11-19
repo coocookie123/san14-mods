@@ -18,6 +18,8 @@
 
 第一次按 README 完成默认构建，确认基线通过。随后针对修改的组件运行相关测试；涉及公共 ABI、存读档生命周期或 Hook 时补集成测试。功能定型后再做一次完整构建和打包核对。
 
+默认构建自动取得 `manager/adapter.lock.json` 固定的公开 GameAdapter 编译件，并核对大小、SHA-256、ABI 和清单；公共 MCP／SDK／Mod 贡献不需要私有仓权限。改变适配器版本时，在一个 PR 中更新锁文件并验证相关能力；不要用 `latest` 替代已测试的版本。下载逻辑与运行包许可证保留分别由 `tests/test_fetch_adapter.py`、`tests/test_runtime_package.py` 验证。当前预览不提供可选曹操的运行时服务。
+
 Worker 更新后必须用新的 `worker.integrity.json` 重编 Host；根构建入口会按顺序完成。不要混用不同构建的 Worker 与 Host。
 
 ## SDK 与 Mod

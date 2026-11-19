@@ -6,7 +6,10 @@ param(
     [string]$CompilerRoot=$env:SAN14_MSVC_ROOT,
     [string]$Python='',
     [string]$ArtifactRoot='',
-    [string]$ScenarioFile=''
+    [string]$ScenarioFile='',
+    [switch]$Offline,
+    [string]$AdapterArchive='',
+    [switch]$SkipGameAdapter
 )
 $ErrorActionPreference='Stop'
 $root=$PSScriptRoot
@@ -25,6 +28,17 @@ $oldCache=$env:PYINSTALLER_CONFIG_DIR
 try{
     $env:PATH=(Split-Path -Parent $Python)+';'+$env:PATH
     $env:PYINSTALLER_CONFIG_DIR=Join-Path $ArtifactRoot 'pyinstaller-cache'
+    if($Target -in @('all','manager') -and -not $SkipGameAdapter){
+        if($Tests){
+            & $Python -B (Join-Path $root 'tests/test_fetch_adapter.py')
+            if($LASTEXITCODE){throw 'GameAdapter download tests failed'}
+        }
+        $fetchArgs=@('--root',$root,'--output',(Join-Path $ArtifactRoot 'adapter-package'))
+        if($Offline){$fetchArgs+='--offline'}
+        if($AdapterArchive){$fetchArgs+=@('--archive',$AdapterArchive)}
+        & $Python -B (Join-Path $root 'tools/fetch_adapter.py') @fetchArgs
+        if($LASTEXITCODE){throw 'Pinned GameAdapter download or verification failed'}
+    }
     if($Target -in @('all','worker')){
         & $Python -B (Join-Path $root 'manager/worker/build_worker.py') --output $worker
         if($LASTEXITCODE){throw 'Worker build failed'}
@@ -37,6 +51,16 @@ try{
         if($Tests){
             & $Python -B (Join-Path $root 'manager/worker/tests/smoke_worker.py') (Join-Path $ArtifactRoot 'native/worker-probe.exe') (Join-Path $ArtifactRoot 'SAN14Base')
             if($LASTEXITCODE){throw 'Host and Worker integration failed'}
+        }
+        if(-not $SkipGameAdapter){
+            if($Tests){
+                & $Python -B (Join-Path $root 'tests/test_runtime_package.py')
+                if($LASTEXITCODE){throw 'Runtime package tests failed'}
+                & (Join-Path $ArtifactRoot 'native/adapter-probe.exe') (Join-Path $ArtifactRoot 'adapter-package')
+                if($LASTEXITCODE){throw 'Downloaded GameAdapter binary contract failed'}
+            }
+            & $Python -B (Join-Path $root 'manager/tools/package_runtime.py') --core (Join-Path $ArtifactRoot 'native/dinput8.dll') --adapter (Join-Path $ArtifactRoot 'adapter-package') --runtime $worker --output (Join-Path $ArtifactRoot 'SAN14-runtime.zip')
+            if($LASTEXITCODE){throw 'Runtime package verification failed'}
         }
     }
     if($Target -in @('all','mods')){

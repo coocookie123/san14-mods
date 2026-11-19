@@ -3,7 +3,7 @@
 三国志14 Mod 的统一源码仓库。管理器、SDK、MCP Worker 和各 Mod 都在这里修改、测试、提交，一次克隆即可取得完整公共源码，不使用子模块。
 
 ```text
-manager/                 通用 Host、安装工具和地址无关的 MCP Worker
+manager/                 通用 Host、运行包打包和地址无关的 MCP Worker
 sdk/                     SDK 头文件、Schema、示例和插件构建工具
 mods/
   default/               优化伴侣、存档数据统计、电脑智商优化、增强字体、增强设定与编辑、MCP
@@ -14,7 +14,7 @@ tests/                   默认／可选分组和打包检查
 
 `default` 表示常规打包范围，各 Mod 的启用偏好仍由各自清单和用户设置决定。`optional` 不进入默认 Mod 包。组件独立版本记录在各自 `mod.json` 或 `project.json`，源码来源提交见 [sources.lock.json](sources.lock.json)。
 
-实际游戏内存地址、版本布局、Hook 和原生命令适配实现位于独立的私有 GameAdapter 仓库。本仓不包含游戏文件、存档或该适配源码。运行游戏需要维护者提供的匹配 GameAdapter 二进制；编译公共代码不需要私有源码。
+实际游戏内存地址、版本布局、Hook 和原生命令适配源码位于独立的私有 GameAdapter 仓库。本仓不包含游戏文件、存档或该适配源码。默认构建会从公开 [GameAdapter 预览 Release](https://github.com/zhaoqxu/san14-mods/releases/tag/gameadapter-0.1.0-single-worker-72678c0) 下载匹配编译件，不需要私有仓权限。
 
 ## 构建
 
@@ -28,7 +28,18 @@ py -3.12 -m venv .venv
 ./build.ps1 -Tests -ArtifactRoot build/first
 ```
 
-默认构建管理器、单 MCP Worker 和六个默认 Mod。产物为 `build/first/native/dinput8.dll`、完整 `build/first/SAN14Base/worker/`、`build/first/mods/default/*.s14mod` 和 `SAN14-mods-default.zip`。这份公共构建不会生成或附带 GameAdapter。
+默认构建管理器、单 MCP Worker 和六个默认 Mod，并自动下载、校验及解压 GameAdapter。产物为 `build/first/SAN14-runtime.zip`（Host＋完整 Worker＋GameAdapter 及许可证）、`build/first/mods/default/*.s14mod` 和 `SAN14-mods-default.zip`；运行包与 Mod 包分别提供。
+
+固定版本、URL、大小与 SHA-256 在 `manager/adapter.lock.json`，不会自动追踪 `latest`。下载缓存位于 `build/.cache/gameadapter/`，适配包解压到对应 `ArtifactRoot/adapter-package/`。缓存校验失败会停止；删除损坏的缓存 ZIP 后可重新下载。已解压的受管文件损坏时会从已验证缓存修复，额外的用户文件会阻止覆盖。
+
+缓存齐全后可离线构建；也可从 Release 手动下载 ZIP 后提供给脚本：
+
+```powershell
+./build.ps1 -Offline -Tests -ArtifactRoot build/first
+./build.ps1 -Offline -AdapterArchive './SAN14-GameAdapter-0.1.0-single-worker-win64.zip' -Tests
+```
+
+只研究通用 Host、希望跳过二进制获取时，使用 `-SkipGameAdapter`，此时不生成完整运行包。`-Target mods` 或 `-Target worker` 本身不下载适配器。所有操作仅写当前检出的 `build/`，不会自动安装到游戏目录。
 
 只改一个 Mod 时：
 
@@ -50,7 +61,7 @@ py -3.12 -m venv .venv
 
 双城制作器只读取用户提供的匹配原始剧本，生成的原生内容位于 `build/`，不进入源码仓。没有原始剧本仍可编辑、构建其它七个原生插件。
 
-曹操 Mod 需要运行时提供 `world.officer_temperament`；SDK 使用兼容的可选表尾接口，旧适配器缺少该能力时明确拒绝加载此可选插件。它不影响默认 Mod 的构建和使用。
+曹操 Mod 需要运行时提供 `world.officer_temperament`；SDK 使用兼容的可选表尾接口，旧适配器缺少该能力时明确拒绝加载此可选插件。当前锁定的单 Worker 预览适配器尚不提供该可选服务，不能运行曹操插件；它不影响六个默认 Mod 的构建和使用。此组合的游戏内验收仍待完成。
 
 ## 协作
 

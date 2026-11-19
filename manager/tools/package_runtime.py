@@ -8,6 +8,15 @@ def package(core,adapter,output,runtime=None):
     version=json.loads((Path(__file__).resolve().parents[1]/'project.json').read_text('utf-8'))['version']
     metadata=json.dumps({'schema_version':1,'version':version,'adapter_abi_version':1,'embedded_commands':True},indent=2).encode('utf-8')
     files={'dinput8.dll':core,'SAN14Base/GameAdapter/adapter.json':adapter/'SAN14Base/GameAdapter/adapter.json','SAN14Base/GameAdapter/GameAdapter.dll':adapter/'SAN14Base/GameAdapter/GameAdapter.dll'}
+    for name in ('README.txt','THIRD-PARTY-NOTICES.txt'):
+        if not (adapter/name).is_file():raise ValueError('Adapter distribution notice missing: '+name)
+        files['SAN14Base/GameAdapter/'+name]=adapter/name
+    licenses=adapter/'licenses'
+    if licenses.is_symlink() or licenses.is_junction() or not licenses.is_dir():raise ValueError('Adapter licenses missing or unsafe')
+    for path in sorted(licenses.rglob('*')):
+        if path.is_symlink() or path.is_junction():raise ValueError('Adapter license links refused')
+        if path.is_file():files['SAN14Base/GameAdapter/licenses/'+path.relative_to(licenses).as_posix()]=path
+    if not any(name.startswith('SAN14Base/GameAdapter/licenses/') for name in files):raise ValueError('Adapter licenses are empty')
     if runtime:
         for p in sorted(runtime.rglob('*')):
             if p.is_symlink():raise ValueError('Runtime symlinks refused')

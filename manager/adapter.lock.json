@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "component": "GameAdapter",
+  "version": "0.1.0",
+  "tag": "gameadapter-0.1.0-single-worker-72678c0",
+  "url": "https://github.com/zhaoqxu/san14-mods/releases/download/gameadapter-0.1.0-single-worker-72678c0/SAN14-GameAdapter-0.1.0-single-worker-win64.zip",
+  "archive_bytes": 44066394,
+  "sha256": "94a13515de1b623b8d8313b79829830aa42617392b343133eea4aa87b336d620",
+  "adapter_sha256": "79e8111aeb28099a27d74ecb40b302bc8f27a48752a91aeba5fa4dbde6e497ce",
+  "adapter_id": "san14-native-adapter",
+  "adapter_abi_version": 1,
+  "sdk_abi_version": 65536
+}
