@@ -1,4 +1,3 @@
-#include "san14_settings_template.h"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -34,7 +33,21 @@ San14TacticalAiPolicy registered_tactical{};
 
 std::string key(San14StringView s) { return {s.data, s.length}; }
 San14Result SAN14_MOD_CALL reg(void*, const San14BoolSetting* s) { settings.push_back(*s); return SAN14_OK; }
-San14Result SAN14_MOD_CALL get(void*, San14StringView k, int32_t* out) { if (key(k) == fail_get) return SAN14_E_BUSY; *out = values[key(k)]; return SAN14_OK; }
+San14Result SAN14_MOD_CALL get(void*, San14StringView k, int32_t* out) {
+    const auto name = key(k);
+    if (name == fail_get) return SAN14_E_BUSY;
+    auto it = values.find(name);
+    if (it != values.end()) {
+        *out = it->second;
+    } else {
+        int32_t def = 0;
+        for (const auto& s : settings) {
+            if (key(s.key) == name) { def = s.default_value; break; }
+        }
+        *out = def;
+    }
+    return SAN14_OK;
+}
 San14Result SAN14_MOD_CALL rule(void*, San14StringView k, int32_t v) {
     const auto name = key(k);
     ++rule_calls[name];
@@ -61,7 +74,7 @@ San14Result SAN14_MOD_CALL dip_unregister(void*) {
 San14Result SAN14_MOD_CALL tac_register(void*, const San14TacticalAiPolicy* p) {
     ++tactical_registers;
     if (fail_tactical) return SAN14_E_BUSY;
-    assert(p && p->struct_size >= sizeof(San14TacticalAiPolicy) && p->on_strategy_update);
+    assert(p && p->struct_size >= sizeof(San14TacticalAiPolicy) && p->on_strategy_update && p->on_daily_tactical_tick);
     registered_tactical = *p;
     return SAN14_OK;
 }
@@ -82,6 +95,15 @@ void reset_mocks() {
     diplomacy_registers = diplomacy_unregisters = tactical_registers = tactical_unregisters = 0;
     registered_diplomacy = {}; registered_tactical = {};
     fail_government = fail_government_cleanup = false; registered_government = nullptr;
+    SetEnvironmentVariableA("SAN14_AI_EVAL_DISABLE_GLOBAL", nullptr);
+    SetEnvironmentVariableA("SAN14_AI_AB_FORCE_A", nullptr);
+    SetEnvironmentVariableA("SAN14_AI_AB_PROFILE_A", nullptr);
+}
+
+void set_all_bt(int v) {
+    for (const char* k : {"bt_deploy", "bt_rally", "bt_engage", "bt_retreat", "bt_stance", "bt_walls", "bt_siegeplan", "bt_gate"}) {
+        values[k] = v;
+    }
 }
 
 San14HostApi fake_host() {
@@ -121,31 +143,30 @@ int main() {
     auto init = reinterpret_cast<Initialize>(GetProcAddress(dll, "SAN14Mod_Initialize"));
     assert(init);
 
+    // 1. Default registration: 14 settings (6 legacy default=0 + 8 new BT default=1).
     reset_mocks();
     auto host = fake_host();
     San14ModApi api{}; api.struct_size = sizeof(api);
     San14ModContext context{}; context.struct_size = sizeof(context);
     assert(init(&host, &api) == SAN14_OK);
-    assert(api.on_load(&context) == SAN14_OK && settings.size() == 8);
-    assert(api.on_enable(&context) == SAN14_OK && rules.empty());
+    assert(api.on_load(&context) == SAN14_OK && settings.size() == 14);
+    assert(find_setting("bt_deploy").default_value == 1);
+    assert(find_setting("bt_gate").default_value == 1);
+    assert(find_setting("weighted_government_auto_assign").default_value == 0);
+    assert(api.on_enable(&context) == SAN14_OK);
+    assert(rules.at("ai.tactical.policy") == 1 && registered_tactical.on_daily_tactical_tick);
+    assert(api.on_disable(&context) == SAN14_OK);
+    assert(rules.at("ai.tactical.policy") == 0 && !registered_tactical.on_strategy_update);
+    api.on_unload(&context);
 
-    assert(key(settings[0].key) == "reduce_ai_office_evaluation_frequency" && key(settings[0].label) == u8"降低电脑官职评定频率");
-    assert(key(settings[1].key) == "ai_district_orders_99" && key(settings[1].label) == u8"电脑和军团99命令书");
-    for (size_t i = 0; i < settings.size(); ++i) {
-        assert(settings[i].default_value == 0);
-        assert(key(settings[i].category) == (i < 2 ? u8"常规" : u8"策略优化"));
-    }
-    struct Row {std::string category;};std::vector<Row> rows;
-    for(const auto& setting:settings)rows.push_back({key(setting.category)});
-    const auto categories=san14::settings_categories(rows);
-    assert(categories.size()==2 && categories[0].label==u8"常规" && categories[0].rows==std::vector<size_t>({0,1}));
-    assert(categories[1].label==u8"策略优化" && categories[1].rows.size()==6);
-    assert(change("reduce_ai_office_evaluation_frequency", 1) == SAN14_OK && rules.at("ai.office.semiannual") == 1);
-    assert(change("reduce_ai_office_evaluation_frequency", 0) == SAN14_OK && rules.at("ai.office.semiannual") == 0);
-    assert(change("ai_district_orders_99", 1) == SAN14_OK && rules.at("districts.orders.ai_refill_99") == 1);
-    fail_rule = "districts.orders.ai_refill_99";
-    assert(change("ai_district_orders_99", 0) == SAN14_E_BUSY && rules.at(fail_rule) == 1);
-    fail_rule.clear(); assert(change("ai_district_orders_99", 0) == SAN14_OK && rules.at("districts.orders.ai_refill_99") == 0);
+    // 2. Shared tactical refcount across all 3 legacy + 8 BT toggles (starting with all off).
+    reset_mocks();
+    set_all_bt(0);
+    host = fake_host();
+    api = {}; api.struct_size = sizeof(api);
+    assert(init(&host, &api) == SAN14_OK);
+    assert(api.on_load(&context) == SAN14_OK && settings.size() == 14);
+    assert(api.on_enable(&context) == SAN14_OK && rules.empty());
 
     assert(key(find_setting("weighted_government_auto_assign").label) == u8"优化电脑施政");
     fail_government = true;
@@ -164,9 +185,13 @@ int main() {
     const int tac_calls = rule_calls.at("ai.tactical.policy");
     assert(change("emergency_reinforcement_ai", 1) == SAN14_OK && rule_calls.at("ai.tactical.policy") == tac_calls);
     assert(change("siege_interception_ai", 1) == SAN14_OK && rule_calls.at("ai.tactical.policy") == tac_calls);
+    assert(change("bt_deploy", 1) == SAN14_OK && rule_calls.at("ai.tactical.policy") == tac_calls);
+    assert(change("bt_gate", 1) == SAN14_OK && rule_calls.at("ai.tactical.policy") == tac_calls);
     assert(change("smart_district_ai", 0) == SAN14_OK && rules.at("ai.tactical.policy") == 1 && rule_calls.at("ai.tactical.policy") == tac_calls);
     assert(change("emergency_reinforcement_ai", 0) == SAN14_OK && rules.at("ai.tactical.policy") == 1 && rule_calls.at("ai.tactical.policy") == tac_calls);
-    assert(change("siege_interception_ai", 0) == SAN14_OK && rules.at("ai.tactical.policy") == 0 && rule_calls.at("ai.tactical.policy") == tac_calls + 1);
+    assert(change("siege_interception_ai", 0) == SAN14_OK && rules.at("ai.tactical.policy") == 1 && rule_calls.at("ai.tactical.policy") == tac_calls);
+    assert(change("bt_deploy", 0) == SAN14_OK && rules.at("ai.tactical.policy") == 1 && rule_calls.at("ai.tactical.policy") == tac_calls);
+    assert(change("bt_gate", 0) == SAN14_OK && rules.at("ai.tactical.policy") == 0 && rule_calls.at("ai.tactical.policy") == tac_calls + 1);
 
     assert(change("emergency_reinforcement_ai", 1) == SAN14_OK && rules.at("ai.tactical.policy") == 1);
     fail_rule = "government.ai.optimized"; fail_rule_value = 0;
@@ -179,45 +204,66 @@ int main() {
     assert(!registered_diplomacy.on_tick && !registered_tactical.on_strategy_update);
     api.on_unload(&context);
 
-    // Lazy missing service checks
+    // 3. Lazy missing service checks & graceful degradation when Host lacks tactical_ai.
     reset_mocks();
     host = fake_host();
-    host.struct_size = static_cast<uint32_t>(offsetof(San14HostApi, diplomacy));
     host.struct_size = static_cast<uint32_t>(offsetof(San14HostApi, government));
     host.government = nullptr;
     host.diplomacy = nullptr;
     host.tactical_ai = nullptr;
     api = {}; api.struct_size = sizeof(api);
+    // Even with default=1 BT toggles, on_enable gracefully degrades so fix_ai_gate_siege still works!
     assert(init(&host, &api) == SAN14_OK && api.on_load(&context) == SAN14_OK && api.on_enable(&context) == SAN14_OK);
     assert(change("fix_ai_gate_siege", 1) == SAN14_OK && rules.at("ai.siege.composition") == 1);
     assert(change("weighted_government_auto_assign", 1) == SAN14_E_UNSUPPORTED);
     assert(change("dynamic_diplomacy", 1) == SAN14_E_UNSUPPORTED);
     assert(change("smart_district_ai", 1) == SAN14_E_UNSUPPORTED);
+    assert(change("bt_deploy", 1) == SAN14_E_UNSUPPORTED);
     assert(api.on_disable(&context) == SAN14_OK);
     api.on_unload(&context);
 
-    reset_mocks(); host = fake_host();
+    // 4. SAN14_AI_EVAL_DISABLE_GLOBAL suppresses global non-tactical rules while keeping tactical AI active.
+    reset_mocks();
+    values["fix_ai_gate_siege"] = 1;
+    values["dynamic_diplomacy"] = 1;
+    values["weighted_government_auto_assign"] = 1;
+    SetEnvironmentVariableA("SAN14_AI_EVAL_DISABLE_GLOBAL", "1");
+    host = fake_host();
+    api = {}; api.struct_size = sizeof(api);
+    assert(init(&host, &api) == SAN14_OK && api.on_load(&context) == SAN14_OK && api.on_enable(&context) == SAN14_OK);
+    assert(rules.find("ai.siege.composition") == rules.end());
+    assert(!registered_diplomacy.on_tick && !registered_government);
+    assert(rules.at("ai.tactical.policy") == 1 && registered_tactical.on_daily_tactical_tick);
+    assert(api.on_disable(&context) == SAN14_OK);
+    api.on_unload(&context);
+
+    // 5. Env A/B harness activates tactical policy even when all toggles are 0.
+    reset_mocks();
+    set_all_bt(0);
+    SetEnvironmentVariableA("SAN14_AI_AB_FORCE_A", "1");
+    SetEnvironmentVariableA("SAN14_AI_AB_PROFILE_A", "new8");
+    host = fake_host();
+    api = {}; api.struct_size = sizeof(api);
+    assert(init(&host, &api) == SAN14_OK && api.on_load(&context) == SAN14_OK && api.on_enable(&context) == SAN14_OK);
+    assert(rules.at("ai.tactical.policy") == 1 && registered_tactical.on_daily_tactical_tick);
+    assert(api.on_disable(&context) == SAN14_OK && rules.at("ai.tactical.policy") == 0);
+    api.on_unload(&context);
+
+    reset_mocks();
+    host = fake_host();
     San14GovernmentApi short_service = government_service; short_service.struct_size = sizeof(uint32_t);
     host.government = &short_service; api = {}; api.struct_size = sizeof(api);
     assert(init(&host, &api) == SAN14_OK && api.on_load(&context) == SAN14_OK && api.on_enable(&context) == SAN14_OK);
     assert(change("weighted_government_auto_assign", 1) == SAN14_E_UNSUPPORTED);
     assert(api.on_disable(&context) == SAN14_OK); api.on_unload(&context);
+
     reset_mocks(); host = fake_host(); values["weighted_government_auto_assign"] = 1;
     api = {}; api.struct_size = sizeof(api);
     assert(init(&host, &api) == SAN14_OK && api.on_load(&context) == SAN14_OK && api.on_enable(&context) == SAN14_OK);
     assert(registered_government && rules.at("government.ai.optimized") == 1);
     assert(api.on_disable(&context) == SAN14_OK); api.on_unload(&context);
-    reset_mocks(); host = fake_host(); values["reduce_ai_office_evaluation_frequency"] = 1; fail_rule = "ai.office.semiannual";
-    api = {}; api.struct_size = sizeof(api);
-    assert(init(&host, &api) == SAN14_OK && api.on_load(&context) == SAN14_OK);
-    assert(api.on_enable(&context) == SAN14_E_BUSY && rules.empty());
-    assert(api.on_disable(&context) == SAN14_OK); api.on_unload(&context);
-    reset_mocks(); host = fake_host(); values["reduce_ai_office_evaluation_frequency"] = 1; api = {}; api.struct_size = sizeof(api);
-    assert(init(&host, &api) == SAN14_OK && api.on_load(&context) == SAN14_OK && api.on_enable(&context) == SAN14_OK);
-    fail_rule = "ai.office.semiannual"; fail_rule_value = 0;
-    assert(api.on_disable(&context) == SAN14_E_BUSY && rules.at(fail_rule) == 1);
-    fail_rule.clear(); assert(api.on_disable(&context) == SAN14_OK && rules.at("ai.office.semiannual") == 0); api.on_unload(&context);
-    std::cout << "AI IQ plugin: ABI, 8 features, shared tactical refcount, lazy services and lifecycle passed\n";
+
+    std::cout << "AI IQ plugin: ABI, 14 features (6 legacy + 8 BT), shared tactical refcount, eval isolation and graceful degradation passed\n";
     FreeLibrary(dll);
     return 0;
 }
