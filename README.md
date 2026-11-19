@@ -41,7 +41,7 @@ py -3.12 -m venv .venv
 
 ```powershell
 ./build.ps1 -Offline -Tests -ArtifactRoot build/first
-./build.ps1 -Offline -AdapterArchive './SAN14-GameAdapter-0.1.0-for-0.2.2-win64.zip' -Tests
+./build.ps1 -Offline -AdapterArchive './SAN14-GameAdapter-0.1.0-for-0.2.2-r2-win64.zip' -Tests
 ```
 
 只研究通用 Host、希望跳过二进制获取时，使用 `-SkipGameAdapter`，此时不生成完整运行包和安装器。`-Target mods` 或 `-Target worker` 本身不下载适配器。构建只生成文件，安装时请手动运行 Setup。
