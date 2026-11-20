@@ -12,7 +12,6 @@ bool active = false;
 bool diplomacy_registered = false;
 bool tactical_registered = false;
 bool government_registered = false;
-bool office_schedule_applied = false;
 
 companion_mod::diplomacy_policy::State diplomacy_state;
 companion_mod::tactical_ai_policy::State tactical_state;
@@ -29,9 +28,12 @@ struct Feature {
     const char* help;
     const char* rule;
     Service service;
+    const char* category = u8"策略优化";
 };
 
 const Feature features[] = {
+    {"reduce_ai_office_evaluation_frequency", u8"降低电脑官职评定频率", u8"将电脑官职自动评定由每月改为每六个月，仅在每年一月、七月月初按原条件评定；关闭恢复原版频率。", "ai.office.semiannual", Service::Rule, u8"常规"},
+    {"ai_district_orders_99", u8"电脑和军团99命令书", u8"每旬发放时电脑势力和玩家委任军团获得99本，玩家直辖军团按原版；发放后仍正常扣费。适用于简中传承版。", "districts.orders.ai_refill_99", Service::Rule, u8"常规"},
     {"fix_ai_gate_siege", u8"优化电脑攻城编组：更常使用攻城器械，并提高单支器械队兵力", u8"提高电脑单一出征队列上限并优化攻城队配比。", "ai.siege.composition", Service::Rule},
     {"dynamic_diplomacy", u8"动态外交（类似群雄策 MOD）：电脑会选择一个主要敌人进攻，并尽量与其他势力结盟", u8"依据威胁与敌意动态判定主敌；对共敌势力放宽同盟与停战条件，对互敌势力提高结盟阻力。", "diplomacy.ai.dynamic", Service::Diplomacy},
     {"smart_district_ai", u8"优化孙权等南方势力的水战逻辑：防守时主动出击在水上解决战斗", u8"检测水域来袭与河道威胁，择优推举水战/操舵武将并调度舰队拦截或机动防御。", "ai.tactical.policy", Service::Tactical},
@@ -40,7 +42,7 @@ const Feature features[] = {
     {"weighted_government_auto_assign", u8"优化电脑施政", u8"根据兵力、战线、粮草和水域威胁调整自动施政排序。", "government.ai.optimized", Service::Government}
 };
 constexpr size_t feature_count = sizeof(features) / sizeof(features[0]);
-static_assert(feature_count == 6, "AI IQ mod's supported feature set");
+static_assert(feature_count == 8, "AI IQ mod's supported feature set");
 bool applied[feature_count]{};
 
 bool government_available() {
@@ -154,7 +156,7 @@ San14Result SAN14_MOD_CALL changed(void*, San14StringView key, int32_t value) {
 
 San14Result SAN14_MOD_CALL load(San14ModContext*) {
     for (const auto& feature : features) {
-        const San14BoolSetting spec{sizeof(spec), sv(feature.key), sv(feature.label), sv(feature.help), 0, changed, nullptr, sv(u8"常规"), 0};
+        const San14BoolSetting spec{sizeof(spec), sv(feature.key), sv(feature.label), sv(feature.help), 0, changed, nullptr, sv(feature.category), 0};
         const auto result = host->settings.register_bool(host->host_context, &spec);
         if (result != SAN14_OK) return result;
     }
@@ -172,18 +174,11 @@ San14Result SAN14_MOD_CALL enable(San14ModContext*) {
             if (applied_result != SAN14_OK) return applied_result;
         }
     }
-    const auto schedule_result = host->rules.set_bool(host->host_context, sv("ai.office.semiannual"), 1);
-    if (schedule_result != SAN14_OK) return schedule_result;
-    office_schedule_applied = true;
     return SAN14_OK;
 }
 
 San14Result SAN14_MOD_CALL disable(San14ModContext*) {
     bool busy = false;
-    if (office_schedule_applied) {
-        if (host->rules.set_bool(host->host_context, sv("ai.office.semiannual"), 0) == SAN14_OK) office_schedule_applied = false;
-        else busy = true;
-    }
     for (size_t i = feature_count; i > 0; --i) {
         if (applied[i - 1] && apply(i - 1, false) != SAN14_OK) busy = true;
     }
@@ -218,7 +213,6 @@ void SAN14_MOD_CALL unload(San14ModContext*) {
     diplomacy_registered = false;
     tactical_registered = false;
     government_registered = false;
-    office_schedule_applied = false;
     diplomacy_state.set_enabled(false);
     tactical_state.set_config({});
     for (auto& value : applied) value = false;

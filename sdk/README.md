@@ -13,6 +13,6 @@ SDK 位于统一仓库的 `sdk/`，不依赖其它 Git 仓库即可编译插件�
 
 本仓追加了可选的 `San14WorldApi.officer_temperament` 服务，供「一千个曹操」等插件使用；其接口见 `include/san14_officer_temperament.h`。具体内存与版本适配由私有 GameAdapter 提供。旧服务表缺少尾部能力时，插件返回不支持；已有世界快照前缀保持兼容。
 
-命名规则 `ai.office.semiannual`（`game.rules`）限制电脑自动授官到每年一月、七月月初；按 Mod 所有权启停，不改变候选／排序或玩家手动任命，缺少适配支持时返回不支持。
+命名规则 `ai.office.semiannual`（`game.rules`）限制电脑自动授官到每年一月、七月月初；按 Mod 内独立设置和所有权启停，不改变候选／排序或玩家手动任命，缺少适配支持时返回不支持。
 
 SDK 的 memory-reader 示例仅通过权限受控接口验证模块 PE 头，不包含游戏数据布局或固定内存地址。正式功能应使用世界、武将、规则、UI 或自动化等语义接口。

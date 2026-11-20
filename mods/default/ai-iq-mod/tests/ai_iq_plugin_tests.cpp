@@ -1,3 +1,4 @@
+#include "san14_settings_template.h"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -125,8 +126,26 @@ int main() {
     San14ModApi api{}; api.struct_size = sizeof(api);
     San14ModContext context{}; context.struct_size = sizeof(context);
     assert(init(&host, &api) == SAN14_OK);
-    assert(api.on_load(&context) == SAN14_OK && settings.size() == 6);
-    assert(api.on_enable(&context) == SAN14_OK && rules.size() == 1 && rules.at("ai.office.semiannual") == 1);
+    assert(api.on_load(&context) == SAN14_OK && settings.size() == 8);
+    assert(api.on_enable(&context) == SAN14_OK && rules.empty());
+
+    assert(key(settings[0].key) == "reduce_ai_office_evaluation_frequency" && key(settings[0].label) == u8"降低电脑官职评定频率");
+    assert(key(settings[1].key) == "ai_district_orders_99" && key(settings[1].label) == u8"电脑和军团99命令书");
+    for (size_t i = 0; i < settings.size(); ++i) {
+        assert(settings[i].default_value == 0);
+        assert(key(settings[i].category) == (i < 2 ? u8"常规" : u8"策略优化"));
+    }
+    struct Row {std::string category;};std::vector<Row> rows;
+    for(const auto& setting:settings)rows.push_back({key(setting.category)});
+    const auto categories=san14::settings_categories(rows);
+    assert(categories.size()==2 && categories[0].label==u8"常规" && categories[0].rows==std::vector<size_t>({0,1}));
+    assert(categories[1].label==u8"策略优化" && categories[1].rows.size()==6);
+    assert(change("reduce_ai_office_evaluation_frequency", 1) == SAN14_OK && rules.at("ai.office.semiannual") == 1);
+    assert(change("reduce_ai_office_evaluation_frequency", 0) == SAN14_OK && rules.at("ai.office.semiannual") == 0);
+    assert(change("ai_district_orders_99", 1) == SAN14_OK && rules.at("districts.orders.ai_refill_99") == 1);
+    fail_rule = "districts.orders.ai_refill_99";
+    assert(change("ai_district_orders_99", 0) == SAN14_E_BUSY && rules.at(fail_rule) == 1);
+    fail_rule.clear(); assert(change("ai_district_orders_99", 0) == SAN14_OK && rules.at("districts.orders.ai_refill_99") == 0);
 
     assert(key(find_setting("weighted_government_auto_assign").label) == u8"优化电脑施政");
     fail_government = true;
@@ -188,17 +207,17 @@ int main() {
     assert(init(&host, &api) == SAN14_OK && api.on_load(&context) == SAN14_OK && api.on_enable(&context) == SAN14_OK);
     assert(registered_government && rules.at("government.ai.optimized") == 1);
     assert(api.on_disable(&context) == SAN14_OK); api.on_unload(&context);
-    reset_mocks(); host = fake_host(); fail_rule = "ai.office.semiannual";
+    reset_mocks(); host = fake_host(); values["reduce_ai_office_evaluation_frequency"] = 1; fail_rule = "ai.office.semiannual";
     api = {}; api.struct_size = sizeof(api);
     assert(init(&host, &api) == SAN14_OK && api.on_load(&context) == SAN14_OK);
     assert(api.on_enable(&context) == SAN14_E_BUSY && rules.empty());
     assert(api.on_disable(&context) == SAN14_OK); api.on_unload(&context);
-    reset_mocks(); host = fake_host(); api = {}; api.struct_size = sizeof(api);
+    reset_mocks(); host = fake_host(); values["reduce_ai_office_evaluation_frequency"] = 1; api = {}; api.struct_size = sizeof(api);
     assert(init(&host, &api) == SAN14_OK && api.on_load(&context) == SAN14_OK && api.on_enable(&context) == SAN14_OK);
     fail_rule = "ai.office.semiannual"; fail_rule_value = 0;
     assert(api.on_disable(&context) == SAN14_E_BUSY && rules.at(fail_rule) == 1);
     fail_rule.clear(); assert(api.on_disable(&context) == SAN14_OK && rules.at("ai.office.semiannual") == 0); api.on_unload(&context);
-    std::cout << "AI IQ plugin: ABI, 6 features, shared tactical refcount, lazy services and lifecycle passed\n";
+    std::cout << "AI IQ plugin: ABI, 8 features, shared tactical refcount, lazy services and lifecycle passed\n";
     FreeLibrary(dll);
     return 0;
 }
