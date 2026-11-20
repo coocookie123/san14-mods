@@ -51,6 +51,8 @@ enum San14OfficerHistoryRelease { SAN14_HISTORY_RELEASE_UNKNOWN=0,
  * CITY detail holds actor ruler; ITEM old/new hold recipient/previous-owner rulers.
  * Missing/legacy values retain the force-ID fallback. */
 #define SAN14_HISTORY_FORCE_RULERS 0x10u
+/* UNIT_DEFEATED object_id: area ID when captured (0 for older records).
+ * The Host resolves its parent city for display; legacy records use location_tile_id. */
 /* DUEL result: 0 actor wins, 1 subject wins, 2 draw.
  * POST/FORCE/STATUS: actor changed old_value -> new_value.
  * FORCE INDEPENDENT object_id: confirmed current city when known (0 unknown).
