@@ -2,6 +2,7 @@ param(
     [ValidateSet('all','manager','worker','mods')][string]$Target='all',
     [string[]]$Mod=@(),
     [switch]$IncludeOptional,
+    [switch]$BundleTwoCity,
     [switch]$Tests,
     [string]$CompilerRoot=$env:SAN14_MSVC_ROOT,
     [string]$Python='',
@@ -14,6 +15,9 @@ param(
 )
 $ErrorActionPreference='Stop'
 $root=$PSScriptRoot
+if($BundleTwoCity -and ($Target -ne 'all' -or $Mod.Count -or -not $IncludeOptional -or -not $ScenarioFile -or $SkipGameAdapter)){
+    throw 'BundleTwoCity requires an all-package build with IncludeOptional and ScenarioFile'
+}
 if(-not $Python){$Python=Join-Path $root '.venv/Scripts/python.exe'}
 if(-not $ArtifactRoot){$ArtifactRoot=Join-Path $root 'build/current'}
 if(-not [IO.Path]::IsPathRooted($ArtifactRoot)){$ArtifactRoot=Join-Path $root $ArtifactRoot}
@@ -102,7 +106,9 @@ try{
             & $Python -B (Join-Path $root 'tests/test_setup_package.py')
             if($LASTEXITCODE){throw 'Installer package tests failed'}
         }
-        & $Python -B (Join-Path $root 'tools/package_setup.py') --root $root --artifact-root $ArtifactRoot
+        $setupArgs=@('--root',$root,'--artifact-root',$ArtifactRoot)
+        if($BundleTwoCity){$setupArgs+='--bundle-two-city'}
+        & $Python -B (Join-Path $root 'tools/package_setup.py') @setupArgs
         if($LASTEXITCODE){throw 'Installer packaging failed'}
     }
 }finally{$env:PATH=$oldPath;$env:PYINSTALLER_CONFIG_DIR=$oldCache}

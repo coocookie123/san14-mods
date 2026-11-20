@@ -2,11 +2,14 @@
 import argparse
 import hashlib
 import io
+from importlib.metadata import distribution
 import json
 from pathlib import Path
 import re
 import stat
 import struct
+import subprocess
+import sys
 import tempfile
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -32,7 +35,56 @@ def entries(archive):
         yield name
 
 
-def package(root, artifacts):
+def bundle_two_city(payload, root, artifacts, report):
+    mod_id = "two-city-all-stars-mod"
+    project = root / "mods/optional" / mod_id
+    source_manifest = read(project / "mod.json")
+    filename = f"{mod_id}-{source_manifest['version']}.s14mod"
+    record = next((item for item in report if item["id"] == mod_id and item["group"] == "optional"), None)
+    if record is None:
+        raise ValueError("Build the optional Two City Mod before bundling it in Setup")
+    data = (artifacts / "mods/optional" / filename).read_bytes()
+    if hashlib.sha256(data).hexdigest() != record["sha256"]:
+        raise ValueError("Two City Mod package changed after packaging")
+    definition_file = "__san14_content__/definition.json"
+    with ZipFile(io.BytesIO(data)) as archive:
+        names = set(entries(archive))
+        metadata = {name: archive.read(name) for name in ("mod.json", "README.md", definition_file)}
+        compiled_manifest = dict(source_manifest, entry={"type": "content", "path": definition_file})
+        definition = json.loads(metadata[definition_file])
+        native = definition["scenario"]["native_file"]
+        content_hash = native["sha256"]
+        native_file = f"__san14_content__/{content_hash}.s14"
+        if (json.loads(metadata["mod.json"]) != compiled_manifest or
+                definition["id"] != mod_id or definition["version"] != source_manifest["version"] or
+                definition.get("compiled") is not True or not re.fullmatch(r"[0-9a-f]{64}", content_hash) or
+                native["path"] != native_file or names != set(metadata) | {native_file} or
+                hashlib.sha256(archive.read(native_file)).hexdigest() != content_hash):
+            raise ValueError("Invalid compiled Two City Mod package")
+    with tempfile.TemporaryDirectory(prefix="two-city-", dir=artifacts) as directory:
+        staging = Path(directory)
+        subprocess.run([
+            sys.executable, "-m", "PyInstaller", "--noconfirm", "--noupx",
+            "--log-level", "WARN", "--name", "author", "--distpath", str(staging / "dist"),
+            "--workpath", str(staging / "work"), "--specpath", str(staging),
+            str(project / "tools/build_duel_scenario.py"),
+        ], cwd=staging, check=True)
+        author = staging / "dist/author"
+        if not (author / "author.exe").is_file():
+            raise ValueError("Missing frozen Two City author")
+        prefix = "SAN14TwoCity/"
+        for path in sorted(author.rglob("*")):
+            if path.is_file():
+                payload.write(path, prefix + "runtime/" + path.relative_to(author).as_posix())
+        for name, contents in metadata.items():
+            payload.writestr(prefix + name, contents)
+        pyinstaller = distribution("PyInstaller")
+        license_file = next(path for path in pyinstaller.files if path.name == "COPYING.txt")
+        payload.writestr(prefix + "licenses/PyInstaller-COPYING.txt", license_file.locate().read_bytes())
+        payload.writestr(prefix + "licenses/Python-LICENSE.txt", (Path(sys.base_prefix) / "LICENSE.txt").read_bytes())
+
+
+def package(root, artifacts, include_two_city=False):
     version = read(root / "manager/project.json")["version"]
     if not re.fullmatch(r"\d+\.\d+\.\d+", version):
         raise ValueError("Invalid manager installer version")
@@ -80,6 +132,9 @@ def package(root, artifacts):
                     raise ValueError(f"Invalid default Mod package: {mod_id}")
             payload.writestr(f"SAN14ModPackages/{mod_id}/{filename}", data)
 
+        if include_two_city:
+            bundle_two_city(payload, root, artifacts, report)
+
     with ZipFile(buffer) as payload:
         if payload.testzip() is not None:
             raise ValueError("Setup payload CRC verification failed")
@@ -104,9 +159,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", required=True, type=Path)
     parser.add_argument("--artifact-root", required=True, type=Path)
+    parser.add_argument("--bundle-two-city", action="store_true",
+                        help="Bundle local generation using a prebuilt optional Two City Mod")
     args = parser.parse_args()
     root = args.root.resolve()
     artifacts = args.artifact_root.resolve()
     if artifacts == root / "build" or not artifacts.is_relative_to(root / "build"):
         parser.error("ArtifactRoot must be under this checkout build/")
-    print(json.dumps(package(root, artifacts)))
+    print(json.dumps(package(root, artifacts, include_two_city=args.bundle_two_city)))
