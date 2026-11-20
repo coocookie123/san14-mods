@@ -126,7 +126,7 @@ int main() {
     San14ModContext context{}; context.struct_size = sizeof(context);
     assert(init(&host, &api) == SAN14_OK);
     assert(api.on_load(&context) == SAN14_OK && settings.size() == 6);
-    assert(api.on_enable(&context) == SAN14_OK && rules.empty());
+    assert(api.on_enable(&context) == SAN14_OK && rules.size() == 1 && rules.at("ai.office.semiannual") == 1);
 
     assert(key(find_setting("weighted_government_auto_assign").label) == u8"优化电脑施政");
     fail_government = true;
@@ -188,6 +188,16 @@ int main() {
     assert(init(&host, &api) == SAN14_OK && api.on_load(&context) == SAN14_OK && api.on_enable(&context) == SAN14_OK);
     assert(registered_government && rules.at("government.ai.optimized") == 1);
     assert(api.on_disable(&context) == SAN14_OK); api.on_unload(&context);
+    reset_mocks(); host = fake_host(); fail_rule = "ai.office.semiannual";
+    api = {}; api.struct_size = sizeof(api);
+    assert(init(&host, &api) == SAN14_OK && api.on_load(&context) == SAN14_OK);
+    assert(api.on_enable(&context) == SAN14_E_BUSY && rules.empty());
+    assert(api.on_disable(&context) == SAN14_OK); api.on_unload(&context);
+    reset_mocks(); host = fake_host(); api = {}; api.struct_size = sizeof(api);
+    assert(init(&host, &api) == SAN14_OK && api.on_load(&context) == SAN14_OK && api.on_enable(&context) == SAN14_OK);
+    fail_rule = "ai.office.semiannual"; fail_rule_value = 0;
+    assert(api.on_disable(&context) == SAN14_E_BUSY && rules.at(fail_rule) == 1);
+    fail_rule.clear(); assert(api.on_disable(&context) == SAN14_OK && rules.at("ai.office.semiannual") == 0); api.on_unload(&context);
     std::cout << "AI IQ plugin: ABI, 6 features, shared tactical refcount, lazy services and lifecycle passed\n";
     FreeLibrary(dll);
     return 0;

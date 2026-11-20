@@ -12,6 +12,7 @@ bool active = false;
 bool diplomacy_registered = false;
 bool tactical_registered = false;
 bool government_registered = false;
+bool office_schedule_applied = false;
 
 companion_mod::diplomacy_policy::State diplomacy_state;
 companion_mod::tactical_ai_policy::State tactical_state;
@@ -171,11 +172,18 @@ San14Result SAN14_MOD_CALL enable(San14ModContext*) {
             if (applied_result != SAN14_OK) return applied_result;
         }
     }
+    const auto schedule_result = host->rules.set_bool(host->host_context, sv("ai.office.semiannual"), 1);
+    if (schedule_result != SAN14_OK) return schedule_result;
+    office_schedule_applied = true;
     return SAN14_OK;
 }
 
 San14Result SAN14_MOD_CALL disable(San14ModContext*) {
     bool busy = false;
+    if (office_schedule_applied) {
+        if (host->rules.set_bool(host->host_context, sv("ai.office.semiannual"), 0) == SAN14_OK) office_schedule_applied = false;
+        else busy = true;
+    }
     for (size_t i = feature_count; i > 0; --i) {
         if (applied[i - 1] && apply(i - 1, false) != SAN14_OK) busy = true;
     }
@@ -210,6 +218,7 @@ void SAN14_MOD_CALL unload(San14ModContext*) {
     diplomacy_registered = false;
     tactical_registered = false;
     government_registered = false;
+    office_schedule_applied = false;
     diplomacy_state.set_enabled(false);
     tactical_state.set_config({});
     for (auto& value : applied) value = false;
