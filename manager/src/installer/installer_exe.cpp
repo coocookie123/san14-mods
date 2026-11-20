@@ -34,7 +34,7 @@ constexpr const wchar_t* kSupportedExeNames[] = {
     L"SAN14_TC.exe",
 };
 constexpr char kPayloadMagic[8] = {'S', '1', '4', 'P', 'K', 'G', '0', '1'};
-constexpr wchar_t kSetupTitle[] = L"三国志14 模组管理器 安装程序 v" SAN14_INSTALLER_VERSION;
+constexpr wchar_t kSetupTitle[] = L"三国志14 模组管理器 安装程序 v" SAN14_INSTALLER_VERSION L"（测试版）";
 constexpr const char* kCompanionKeys[] = {
     "disable_tribal_officer_gifts", "disable_foreign_trade", "disable_tribal_troop_replenish",
     "editable_scenario_settings", "fine_expert_mode", "weighted_government_auto_assign",
