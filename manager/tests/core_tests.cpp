@@ -34,6 +34,44 @@ int main(){
     for(const auto& value:{"null","{}","[1]","[\"Legacy\"]","[{\"name\":\"\"}]","[{\"name\":\"a\",\"url\":\"javascript:alert(1)\"}]","[{\"name\":\"a\"},{\"name\":\"a\"}]"})assert(credits(value)==SAN14_E_INVALID_ARGUMENT);
     write_atomic(root/L"mod.json",manifest.data(),manifest.size());
     identity.game_build=2;assert(api->admit_mod(root.c_str(),&identity,nullptr,0,&required,error,sizeof(error))!=SAN14_OK);
+
+    // Pure semantic-API mod without game_builds / game_exe_sha256 is admitted cleanly
+    // even on dynamically admitted discovery builds (game_build == 0).
+    const std::string sha_a(64,'a'),sha_b(64,'b');
+    const std::string semantic_manifest=R"({"schema_version":1,"id":"fixture-mod","name":"Fixture","version":"0.1.0","entry":{"type":"native","path":"fixture.dll","abi":1},"host_version":">=0.2.0 <0.3.0","dependencies":[],"conflicts":[],"permissions":["game.rules","settings"],"disable_mode":"hot"})";
+    write_atomic(root/L"mod.json",semantic_manifest.data(),semantic_manifest.size());
+    San14CoreAdmission discovery_id{sizeof(discovery_id),0,"0.2.0",sha_b.c_str()};
+    assert(api->admit_mod(root.c_str(),&discovery_id,nullptr,0,&required,error,sizeof(error))==SAN14_E_BUFFER_TOO_SMALL);
+    normalized.assign(required,0);
+    assert(api->admit_mod(root.c_str(),&discovery_id,normalized.data(),required,&required,error,sizeof(error))==SAN14_OK);
+    assert(!json::parse(normalized.data()).at("_memory_admitted").flag());
+
+    // Pure semantic-API mod carrying legacy game_exe_sha256 is not blocked by SHA mismatch
+    // (still validates array format and never grants raw memory access).
+    const std::string semantic_with_sha=std::string(R"({"schema_version":1,"id":"fixture-mod","name":"Fixture","version":"0.1.0","entry":{"type":"native","path":"fixture.dll","abi":1},"host_version":">=0.2.0 <0.3.0","game_exe_sha256":[")")+sha_a+R"("],"dependencies":[],"conflicts":[],"permissions":["game.rules"],"disable_mode":"hot"})";
+    write_atomic(root/L"mod.json",semantic_with_sha.data(),semantic_with_sha.size());
+    assert(api->admit_mod(root.c_str(),&discovery_id,nullptr,0,&required,error,sizeof(error))==SAN14_E_BUFFER_TOO_SMALL);
+    normalized.assign(required,0);
+    assert(api->admit_mod(root.c_str(),&discovery_id,normalized.data(),required,&required,error,sizeof(error))==SAN14_OK);
+    assert(!json::parse(normalized.data()).at("_memory_admitted").flag());
+
+    const std::string semantic_bad_sha=R"({"schema_version":1,"id":"fixture-mod","name":"Fixture","version":"0.1.0","entry":{"type":"native","path":"fixture.dll","abi":1},"host_version":">=0.2.0 <0.3.0","game_exe_sha256":["not-a-sha"],"dependencies":[],"conflicts":[],"permissions":["game.rules"],"disable_mode":"hot"})";
+    write_atomic(root/L"mod.json",semantic_bad_sha.data(),semantic_bad_sha.size());
+    assert(api->admit_mod(root.c_str(),&discovery_id,nullptr,0,&required,error,sizeof(error))!=SAN14_OK);
+
+    // Raw-memory mod (game.memory.read) strictly requires matching game_exe_sha256.
+    const std::string raw_missing_sha=R"({"schema_version":1,"id":"fixture-mod","name":"Fixture","version":"0.1.0","entry":{"type":"native","path":"fixture.dll","abi":1},"host_version":">=0.2.0 <0.3.0","dependencies":[],"conflicts":[],"permissions":["game.memory.read"],"disable_mode":"hot"})";
+    write_atomic(root/L"mod.json",raw_missing_sha.data(),raw_missing_sha.size());
+    assert(api->admit_mod(root.c_str(),&discovery_id,nullptr,0,&required,error,sizeof(error))!=SAN14_OK);
+
+    const std::string raw_with_sha=std::string(R"({"schema_version":1,"id":"fixture-mod","name":"Fixture","version":"0.1.0","entry":{"type":"native","path":"fixture.dll","abi":1},"host_version":">=0.2.0 <0.3.0","game_exe_sha256":[")")+sha_a+R"("],"dependencies":[],"conflicts":[],"permissions":["game.memory.read"],"disable_mode":"hot"})";
+    write_atomic(root/L"mod.json",raw_with_sha.data(),raw_with_sha.size());
+    assert(api->admit_mod(root.c_str(),&discovery_id,nullptr,0,&required,error,sizeof(error))!=SAN14_OK);
+    discovery_id.game_exe_sha256=sha_a.c_str();
+    assert(api->admit_mod(root.c_str(),&discovery_id,nullptr,0,&required,error,sizeof(error))==SAN14_E_BUFFER_TOO_SMALL);
+    normalized.assign(required,0);
+    assert(api->admit_mod(root.c_str(),&discovery_id,normalized.data(),required,&required,error,sizeof(error))==SAN14_OK);
+    assert(json::parse(normalized.data()).at("_memory_admitted").flag());
     auto adapter=root/L"SAN14Base"/L"GameAdapter";fs::create_directories(adapter);
     auto put=[&](const fs::path& dll,const std::string& expected_id="fixture-adapter"){
         fs::copy_file(dll,adapter/L"GameAdapter.dll",fs::copy_options::overwrite_existing);

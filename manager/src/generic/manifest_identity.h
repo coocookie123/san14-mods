@@ -4,7 +4,7 @@
 #include <set>
 namespace manifest_identity {
 // The caller has already admitted the executable through GameProfile. Missing
-// restrictions inherit that admission; declared lists are always enforced.
+// restrictions inherit that admission; declared game_builds are always enforced.
 inline void admit_build(const json::Value& manifest,uint32_t actual_build){
     if(!manifest.has("game_builds"))return;
     const auto& builds=manifest.at("game_builds");
@@ -19,6 +19,8 @@ inline void admit_build(const json::Value& manifest,uint32_t actual_build){
     if(!match)throw std::runtime_error("Unsupported game build");
 }
 // Shared native admission helper, independent of UI and DLL loading.
+// game_exe_sha256 is strictly enforced when game.memory.read is requested;
+// pure semantic-API mods inherit Host's verified GameProfile/discovery admission.
 inline bool admit(const json::Value& manifest,const std::set<std::string>& permissions,const std::string& actual_sha){
     const bool raw=permissions.count("game.memory.read")!=0;
     if(!manifest.has("game_exe_sha256")){
@@ -32,6 +34,6 @@ inline bool admit(const json::Value& manifest,const std::set<std::string>& permi
             throw std::runtime_error("Invalid/duplicate executable SHA256");
         if(hash==actual_sha)match=true;
     }
-    if(!match)throw std::runtime_error("Executable SHA256 incompatible");return raw;
+    if(raw&&!match)throw std::runtime_error("Executable SHA256 incompatible");return raw;
 }
 }

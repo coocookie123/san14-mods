@@ -10,12 +10,6 @@
     "abi": 1
   },
   "host_version": ">=0.2.1 <1.0.0",
-  "game_builds": [
-    25953386
-  ],
-  "game_exe_sha256": [
-    "2e49348aa1b9be5cfca651e71c8d77b2e4bd2d11387edc0b0236f4352458a239"
-  ],
   "dependencies": [],
   "conflicts": [],
   "permissions": [
