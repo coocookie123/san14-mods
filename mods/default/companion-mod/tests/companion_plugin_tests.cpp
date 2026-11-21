@@ -673,6 +673,192 @@ void test_force_control_host_ui(Initialize init){
     open();click(960,1000);assert(!ui.has_visible()&&controlled_force==17&&force_selections==2);
     stop(api,context);assert(native.panels.empty()&&ui.panel_count()==0&&ui.control_count()==0);
 }
+
+void test_manager_and_expert_page_pref_sync(Initialize init) {
+    MockUiState ui_state;
+    g_mock_ui = &ui_state;
+    reset_companion_mocks();
+
+    San14PagesApi pages_api{sizeof(San14PagesApi), pages_register};
+    San14UiStyleApi style_api{sizeof(San14UiStyleApi), SAN14_UI_STYLE_EXPERT | SAN14_UI_STYLE_TINT, style_selected, style_help, style_tint};
+    San14SettingsExtendedApi settings_ext{sizeof(San14SettingsExtendedApi), reg_range_fn, get_range_fn};
+    San14UiSliderApi slider_api{sizeof(San14UiSliderApi), ui_add_slider_fn, ui_set_slider_fn, ui_get_slider_fn};
+    San14GameSpeedApi speed_api{sizeof(San14GameSpeedApi), speed_caps_fn, speed_set_fn, speed_get_fn};
+
+    auto host = fake_host();
+    host.storage = {sizeof(San14StorageApi), storage_read_fn, storage_write_fn};
+    host.ui = {sizeof(San14UiApi), ui_create, ui_add_label, ui_add_button, ui_set_text, ui_show, ui_close};
+    host.ui_style = &style_api;
+    host.pages = &pages_api;
+    host.settings_ext = &settings_ext;
+    host.ui_slider = &slider_api;
+    host.game_speed = &speed_api;
+
+    San14ModApi api{}; api.struct_size = sizeof(api); San14ModContext context{};
+    start(init, host, api, context);
+    assert(api.on_enable(&context) == SAN14_OK);
+
+    // 1. Toggle "editable_scenario_settings" ON in ExpertPage (first bool row on "常规" tab).
+    assert(ui_state.registered_page.open(ui_state.registered_page.plugin_context) == SAN14_OK);
+    const auto page = ui_state.stack.back();
+    const auto yes_btn = find_button_by_text(page, u8"有");
+    assert(yes_btn != 0);
+    ui_state.controls.at(yes_btn).cb(ui_state.controls.at(yes_btn).ctx, yes_btn);
+    assert(rules.at("scenario.settings.editable") == 1);
+    assert(ui_state.global_storage.at("companion.pref.editable_scenario_settings") == std::vector<uint8_t>{1});
+
+    // 2. Restart: global storage restores ON.
+    stop(api, context);
+    reset_companion_mocks();
+    ui_state.panels.clear(); ui_state.stack.clear(); ui_state.controls.clear(); ui_state.range_settings.clear();
+    start(init, host, api, context);
+    assert(api.on_enable(&context) == SAN14_OK);
+    assert(rules.at("scenario.settings.editable") == 1);
+
+    // 3. Toggle OFF via main Manager settings list (changed() callback).
+    // Previously this forgot save_pref(), causing silent revert on restart.
+    values["editable_scenario_settings"] = 0;
+    assert(change("editable_scenario_settings", 0) == SAN14_OK);
+    assert(rules.at("scenario.settings.editable") == 0);
+    assert(ui_state.global_storage.at("companion.pref.editable_scenario_settings") == std::vector<uint8_t>{0});
+
+    // 4. Failed apply inside changed() must NOT overwrite persisted global preference.
+    fail_rule = "scenario.settings.editable";
+    fail_rule_value = 1;
+    assert(change("editable_scenario_settings", 1) == SAN14_E_BUSY);
+    assert(ui_state.global_storage.at("companion.pref.editable_scenario_settings") == std::vector<uint8_t>{0});
+    fail_rule.clear();
+    fail_rule_value = -1;
+
+    // 5. Restart again: must stay OFF (no silent revert to 1!).
+    stop(api, context);
+    reset_companion_mocks();
+    ui_state.panels.clear(); ui_state.stack.clear(); ui_state.controls.clear(); ui_state.range_settings.clear();
+    start(init, host, api, context);
+    assert(api.on_enable(&context) == SAN14_OK);
+    assert(!rules.count("scenario.settings.editable") || rules.at("scenario.settings.editable") == 0);
+
+    // 6. Toggle ON via main Manager settings list and verify ExpertPage + restart agree.
+    values["editable_scenario_settings"] = 1;
+    assert(change("editable_scenario_settings", 1) == SAN14_OK);
+    assert(ui_state.global_storage.at("companion.pref.editable_scenario_settings") == std::vector<uint8_t>{1});
+    assert(ui_state.registered_page.open(ui_state.registered_page.plugin_context) == SAN14_OK);
+    const auto reopened = ui_state.stack.back();
+    assert(ui_state.controls.at(find_button_by_text(reopened, u8"有")).selected == 1);
+
+    stop(api, context);
+    reset_companion_mocks();
+    ui_state.panels.clear(); ui_state.stack.clear(); ui_state.controls.clear(); ui_state.range_settings.clear();
+    start(init, host, api, context);
+    assert(api.on_enable(&context) == SAN14_OK);
+    assert(rules.at("scenario.settings.editable") == 1);
+
+    stop(api, context);
+    g_mock_ui = nullptr;
+}
+
+void test_area_storage_survives_transient_error(Initialize init) {
+    struct AreaStorageMock {
+        San14SaveStorageInfo info{sizeof(San14SaveStorageInfo), SAN14_STORAGE_READY, 1, "pt-area"};
+        std::map<std::string, std::vector<uint8_t>> playthrough;
+        std::map<San14Subscription, std::pair<uint32_t, San14EventCallback>> subs;
+        San14Subscription next_sub = 1;
+    };
+    static AreaStorageMock* state = nullptr;
+    AreaStorageMock mock;
+    state = &mock;
+
+    auto ctx_fn = [](void*, San14SaveStorageInfo* out) -> San14Result { *out = state->info; return SAN14_OK; };
+    auto read_fn = [](void*, San14StringView scope, San14StringView k, void* out, uint32_t cap, uint32_t* req) -> San14Result {
+        if (key(scope) != "playthrough") { *req = 0; return SAN14_E_NOT_FOUND; }
+        auto it = state->playthrough.find(key(k));
+        if (it == state->playthrough.end()) { *req = 0; return SAN14_E_NOT_FOUND; }
+        *req = static_cast<uint32_t>(it->second.size());
+        if (cap < *req) return SAN14_E_BUFFER_TOO_SMALL;
+        if (*req && out) std::memcpy(out, it->second.data(), *req);
+        return SAN14_OK;
+    };
+    auto write_fn = [](void*, San14StringView scope, San14StringView k, const void* data, uint32_t size) -> San14Result {
+        if (key(scope) != "playthrough") return SAN14_OK;
+        const auto* bytes = static_cast<const uint8_t*>(data);
+        state->playthrough[key(k)] = size ? std::vector<uint8_t>(bytes, bytes + size) : std::vector<uint8_t>{};
+        return SAN14_OK;
+    };
+    auto sub_fn = [](void*, uint32_t ev, int32_t, San14EventCallback cb, void*, San14Subscription* out) -> San14Result {
+        *out = state->next_sub++;
+        state->subs[*out] = {ev, cb};
+        return SAN14_OK;
+    };
+    auto unsub_fn = [](void*, San14Subscription sub) -> San14Result {
+        return state->subs.erase(sub) ? SAN14_OK : SAN14_E_NOT_FOUND;
+    };
+    auto fire_ev = [&](uint32_t ev) {
+        auto copy = state->subs;
+        San14EventView view{}; view.struct_size = sizeof(view); view.event_id = ev;
+        for (const auto& [_, entry] : copy) if (entry.first == ev) entry.second(nullptr, &view);
+    };
+
+    reset_companion_mocks();
+    San14SaveStorageApi save_api{sizeof(San14SaveStorageApi), ctx_fn, nullptr, nullptr};
+    auto host = fake_host();
+    host.save_storage = &save_api;
+    host.storage = {sizeof(San14StorageApi), read_fn, write_fn};
+    host.events = {sizeof(San14EventApi), sub_fn, unsub_fn};
+
+    San14ModApi api{}; api.struct_size = sizeof(api); San14ModContext context{};
+    start(init, host, api, context);
+    assert(api.on_enable(&context) == SAN14_OK);
+    assert(change("persistent_area_officers", 1) == SAN14_OK && registered_area.on_sync);
+
+    // Suspend a player area officer (area 12, force 1, officer 42 -> captured).
+    San14AreaOfficerState off{sizeof(San14AreaOfficerState), 42, 2, 1, 7, 7, 1, 1, 1, 0, 1};
+    San14AreaSnapshot area{sizeof(San14AreaSnapshot), 12, 7, 1, 42, 100, 2, 3};
+    auto lookup = [](void* ctx, uint32_t id, San14AreaOfficerState* out) -> San14Result {
+        auto* o = static_cast<San14AreaOfficerState*>(ctx);
+        if (id != o->officer_id) return SAN14_E_NOT_FOUND;
+        *out = *o;
+        return SAN14_OK;
+    };
+    San14AreaSyncContext sync_ctx{};
+    sync_ctx.struct_size = sizeof(sync_ctx);
+    sync_ctx.phase = SAN14_AREA_SYNC_PRE_TICK;
+    sync_ctx.player_force_id = 1;
+    sync_ctx.date_key = 2070101;
+    sync_ctx.areas = &area;
+    sync_ctx.area_count = 1;
+    sync_ctx.lookup_context = &off;
+    sync_ctx.lookup_officer = lookup;
+
+    San14AreaAssignAction action{};
+    uint32_t out_count = 0;
+    assert(registered_area.on_sync(registered_area.plugin_context, &sync_ctx, &action, 1, &out_count) == SAN14_OK && out_count == 0);
+
+    // Officer 42 captured and area 12 vacated -> suspends entry (dev=3, aux=2).
+    off.is_serving = 0; off.is_available = 0; off.is_captive = 1; off.rank = 6;
+    area.officer_id = 0;
+    sync_ctx.date_key = 2070201;
+    assert(registered_area.on_sync(registered_area.plugin_context, &sync_ctx, &action, 1, &out_count) == SAN14_OK && out_count == 0);
+
+    // Transient SAN14_STORAGE_ERROR (e.g. failed save attachment) must NOT wipe in-memory suspended area!
+    mock.info.state = SAN14_STORAGE_ERROR;
+    ++mock.info.revision;
+    fire_ev(SAN14_EVENT_STORAGE_CHANGED);
+
+    // Officer 42 released back to player force 1 -> suspended officer 42 is still restored!
+    off.is_captive = 0; off.is_serving = 1; off.is_available = 1; off.rank = 2;
+    sync_ctx.date_key = 2070301;
+    assert(registered_area.on_sync(registered_area.plugin_context, &sync_ctx, &action, 1, &out_count) == SAN14_OK);
+    assert(out_count == 1 && action.area_id == 12 && action.officer_id == 42 && action.restore_modes == 1 && action.dev_type == 3 && action.aux_mode == 2);
+
+    // Returning to Title Menu (SAN14_STORAGE_UNAVAILABLE) DOES reset area_state cleanly.
+    mock.info.state = SAN14_STORAGE_UNAVAILABLE;
+    mock.info.playthrough_id[0] = 0;
+    ++mock.info.revision;
+    fire_ev(SAN14_EVENT_STORAGE_CHANGED);
+
+    stop(api, context);
+    state = nullptr;
+}
 }  // namespace
 
 int main() {
@@ -690,7 +876,9 @@ int main() {
     test_game_speed_setting(init);
     test_force_control_menu(init);
     test_force_control_host_ui(init);
-    std::cout << "Companion plugin: ABI, 21 features, speed slider, scenario choice, copied policies, lazy areas, F8 rollback, lifecycle passed\n";
+    test_manager_and_expert_page_pref_sync(init);
+    test_area_storage_survives_transient_error(init);
+    std::cout << "Companion plugin: ABI, 21 features, speed slider, pref sync, area error resilience, scenario choice, copied policies, lazy areas, F8 rollback, lifecycle passed\n";
     FreeLibrary(dll);
     return 0;
 }

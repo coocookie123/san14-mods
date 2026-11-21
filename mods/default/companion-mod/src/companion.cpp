@@ -102,7 +102,9 @@ void flush_area_storage(){
 void sync_area_storage(bool force_reload){
     if(!area_storage_available())return;
     San14SaveStorageInfo info{};info.struct_size=sizeof(info);
-    if(host->save_storage->context(host->host_context,&info)!=SAN14_OK||info.state!=SAN14_STORAGE_READY||!info.playthrough_id[0]){
+    if(host->save_storage->context(host->host_context,&info)!=SAN14_OK)return;
+    if(info.state==SAN14_STORAGE_LOADING||info.state==SAN14_STORAGE_ERROR)return;
+    if(info.state!=SAN14_STORAGE_READY||!info.playthrough_id[0]){
         area_storage_revision=0;area_playthrough_id.clear();area_state.reset_for_new_playthrough();return;
     }
     const std::string next_id(info.playthrough_id);
@@ -465,7 +467,11 @@ San14Result SAN14_MOD_CALL changed(void*,San14StringView key,int32_t value){
     if(value!=0&&value!=1)return SAN14_E_INVALID_ARGUMENT;
     for(size_t i=0;i<feature_count;++i)if(key.length==std::strlen(features[i].key)&&!std::memcmp(key.data,features[i].key,key.length)){
         const auto result=apply(i,value!=0);
-        if(result==SAN14_OK)feature_values[i]=(value!=0);
+        if(result==SAN14_OK){
+            feature_values[i]=(value!=0);
+            save_pref(i,value!=0);
+            if(settings_page&&settings_page->handle()){settings_page->update_bool(features[i].key,value!=0);settings_page->refresh();}
+        }
         return result;
     }
     return SAN14_E_NOT_FOUND;
