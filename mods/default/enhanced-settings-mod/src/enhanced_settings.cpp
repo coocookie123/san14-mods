@@ -19,7 +19,7 @@ bool configured=false,edit_applied=false,merit_applied=false;
 bool traits_supported=false,traits_applied=false;
 std::array<bool,kCustomCount> supported{};
 Preferences defaults,current,draft,archive_defaults;
-bool draft_ready=false;
+bool draft_ready=false,storage_degraded=false;
 void update_pending(const std::string& message="");
 void update_value_marks();
 uint64_t revision=0;
@@ -159,11 +159,12 @@ void update_rows();
 San14Result sync(){
     San14SaveStorageInfo info{};info.struct_size=sizeof(info);
     const auto r=host->save_storage->context(host->host_context,&info);if(r!=SAN14_OK)return r;
-    if(!sync_needed&&revision==info.revision&&playthrough==info.playthrough_id)return SAN14_OK;
-    const bool switched=!draft_ready||revision!=info.revision||playthrough!=info.playthrough_id;
-    Preferences next=info.state==SAN14_STORAGE_READY&&info.save_basename[0]?archive_defaults:defaults;
-    if(info.state==SAN14_STORAGE_ERROR)return SAN14_E_BUSY;
     if(info.state==SAN14_STORAGE_LOADING)return SAN14_E_BUSY;
+    const bool degraded=info.state==SAN14_STORAGE_ERROR;
+    const std::string next_playthrough=info.state==SAN14_STORAGE_READY?info.playthrough_id:"";
+    if(!sync_needed&&revision==info.revision&&playthrough==next_playthrough&&storage_degraded==degraded)return SAN14_OK;
+    const bool switched=!draft_ready||revision!=info.revision||playthrough!=next_playthrough||storage_degraded!=degraded;
+    Preferences next=degraded?(configured?current:defaults):(info.state==SAN14_STORAGE_READY&&info.save_basename[0]?archive_defaults:defaults);
     if(info.state==SAN14_STORAGE_READY){
         bool migrated=false;const auto read=read_preferences("playthrough",next,&migrated);
         if(read!=SAN14_OK&&read!=SAN14_E_NOT_FOUND)return read;
@@ -171,10 +172,12 @@ San14Result sync(){
         // preference cannot safely switch this after its extra IDs were read.
         next.extended_traits=defaults.extended_traits;
         if(read==SAN14_E_NOT_FOUND||migrated){const auto written=write_preferences("playthrough",next);if(written!=SAN14_OK)return written;}
+    }else if(degraded){
+        next.extended_traits=defaults.extended_traits;
     }
     const bool values_changed=std::memcmp(&next,&current,sizeof(next))!=0;
-    const auto applied=switched||values_changed?apply(next,true):SAN14_OK;if(applied!=SAN14_OK)return applied;
-    current=next;if(switched){draft=next;draft_ready=true;}revision=info.revision;playthrough=info.state==SAN14_STORAGE_READY?info.playthrough_id:"";sync_needed=false;
+    const auto applied=switched||values_changed||!configured||degraded?apply(next,true):SAN14_OK;if(applied!=SAN14_OK)return applied;
+    current=next;if(switched){draft=next;draft_ready=true;}revision=info.revision;playthrough=next_playthrough;storage_degraded=degraded;sync_needed=false;
     if(page){if(switched||values_changed){traits_editor.reset();stats_editor.reset();}update_rows();page->refresh();update_pending();}
     return SAN14_OK;
 }
@@ -207,8 +210,22 @@ bool saved_edit_supported(){
 void update_pending(const std::string& message){
     if(!page)return;const auto count=PendingSettings(current,draft).count();
     update_value_marks();
-    const auto pending=u8" 项未保存变更，尚未生效；返回将放弃。";
-    page->footer_status(message.empty()?(count?std::string(u8"有 ")+std::to_string(count)+pending:u8"调整后点击保存变更；需同步其他已有存档时，选择保存变更到全部存档。") : message,count&&saved_edit_supported());
+    std::string status=message;
+    if(status.empty()){
+        if(storage_degraded){
+            status=count
+                ? std::string(u8"降级模式：有 ")+std::to_string(count)+u8" 项未保存变更，保存后仅应用于当前局与新局默认（不写入存档附加）。"
+                : u8"存档附加数据暂不可用（降级模式）：修改仅应用于当前局与新局默认，待正常读档后恢复逐档同步。";
+        }else{
+            const auto pending=u8" 项未保存变更，尚未生效；返回将放弃。";
+            status=count?std::string(u8"有 ")+std::to_string(count)+pending:u8"调整后点击保存变更；需同步其他已有存档时，选择保存变更到全部存档。";
+        }
+    }
+    page->footer_hint(storage_degraded
+        ? u8"降级模式：存档附加数据暂不可用，保存变更仅应用于当前局与新局默认。\n待正常读档恢复后，可继续逐档同步或保存到全部存档。"
+        : u8"保存变更：当前存档（如有）及新局默认。\n其他已有存档不变；另可选择同步全部存档。");
+    page->footer_action_enabled(1,!storage_degraded);
+    page->footer_status(status,count&&(storage_degraded||saved_edit_supported()));
 }
 San14Result commit(const Preferences& next){
     if(!active)return SAN14_E_BUSY;if(!next.valid())return SAN14_E_INVALID_ARGUMENT;
@@ -223,10 +240,24 @@ San14Result SAN14_MOD_CALL transform_saved(void* context,const San14SavedDataAcc
 }
 San14Result save_pending(uint32_t target){
     auto r=sync();if(r!=SAN14_OK){update_pending(u8"存档忙碌或已切换，请稍后重新编辑。");return r;}
-    if(!saved_edit_supported()){update_pending(u8"当前管理器不支持直接保存设置，请更新管理器。");return SAN14_E_UNSUPPORTED;}
     const PendingSettings patch(current,draft);if(!patch.count())return SAN14_OK;
     San14SaveStorageInfo info{sizeof(info)};r=host->save_storage->context(host->host_context,&info);if(r!=SAN14_OK)return r;
     if(info.revision!=revision){update_pending(u8"存档已切换，请重新编辑。");return SAN14_E_STALE_GENERATION;}
+    if(info.state==SAN14_STORAGE_ERROR){
+        if(target!=SAN14_SAVED_EDIT_CURRENT){
+            update_pending(u8"当前存档附加数据处于异常降级状态，暂不可写入全部存档；可点击保存变更应用到当前局与新局默认。");
+            return SAN14_E_BUSY;
+        }
+        const auto next_defaults=patch.merge(defaults);
+        r=write_preferences("global",next_defaults);if(r!=SAN14_OK){update_pending(u8"默认设置写入失败，变更仍未提交。");return r;}
+        const auto next=patch.merge(current);
+        defaults=next_defaults;
+        r=apply(next,true);current=next;draft=next;
+        sync_needed=(r!=SAN14_OK);update_rows();page->refresh();
+        if(r!=SAN14_OK){update_pending(u8"降级模式：新局默认已保存，当前局应用失败，请重新进入或读取存档。");return r;}
+        update_pending(u8"降级模式：已应用到当前局并更新新局默认（当前存档附加数据未写入，待正常读档后恢复逐档同步）。");return SAN14_OK;
+    }
+    if(!saved_edit_supported()){update_pending(u8"当前管理器不支持直接保存设置，请更新管理器。");return SAN14_E_UNSUPPORTED;}
     const bool current_file=info.state==SAN14_STORAGE_READY&&info.save_basename[0];
     const auto old_defaults=defaults;
     const auto next_defaults=patch.merge(defaults);
@@ -322,7 +353,9 @@ San14Result SAN14_MOD_CALL open_page(void*){
         page=std::make_unique<san14::ExpertPage>(host,u8"增强设定与编辑");
         page->set_footer_actions({{u8"保存变更",[]{return save_pending(SAN14_SAVED_EDIT_CURRENT);}},
             {u8"保存变更到全部存档",[]{return save_pending(SAN14_SAVED_EDIT_ALL);}}});
-        page->footer_hint(u8"保存变更：当前存档（如有）及新局默认。\n其他已有存档不变；另可选择同步全部存档。");
+        page->footer_hint(storage_degraded
+            ? u8"降级模式：存档附加数据暂不可用，保存变更仅应用于当前局与新局默认。\n待正常读档恢复后，可继续逐档同步或保存到全部存档。"
+            : u8"保存变更：当前存档（如有）及新局默认。\n其他已有存档不变；另可选择同步全部存档。");
         page->add_bool(u8"常规","edit",u8"城市编辑支持异族势力",u8"在原生编辑中解锁异族城市 47–51 与异族势力 46–50。",current.enhanced_edit!=0,[](int32_t v){return change_edit(nullptr,{},v);});
         page->add_bool(u8"常规","merit",u8"大幅提高武将功劳上限",u8"功劳上限由 12000 提高至 32767，默认关闭。修改后选择保存范围才生效。",current.extended_merit!=0,[](int32_t v){return change_merit(nullptr,{},v);});
         const auto& defs=custom_defs();
@@ -403,9 +436,9 @@ San14Result SAN14_MOD_CALL disable(San14ModContext*){
     if(merit_applied){if(host->rules.set_bool(host->host_context,sv("officers.merit.extended"),0)==SAN14_OK)merit_applied=false;else busy=true;}
     if(configured){if(host->scenario->configure_custom(host->host_context,nullptr,0)==SAN14_OK)configured=false;else busy=true;}
     if(busy)return SAN14_E_BUSY;
-    active=false;revision=0;playthrough.clear();return SAN14_OK;
+    active=false;revision=0;playthrough.clear();storage_degraded=false;return SAN14_OK;
 }
-void SAN14_MOD_CALL unload(San14ModContext*){page.reset();colors.reset();traits_editor.reset();stats_editor.reset();host=nullptr;active=false;traits_supported=false;traits_applied=false;}
+void SAN14_MOD_CALL unload(San14ModContext*){page.reset();colors.reset();traits_editor.reset();stats_editor.reset();host=nullptr;active=false;traits_supported=false;traits_applied=false;storage_degraded=false;}
 }
 extern "C" SAN14_MOD_EXPORT San14Result SAN14_MOD_CALL SAN14Mod_Initialize(const San14HostApi* h,San14ModApi* out){
     if(!h||!out||out->struct_size<sizeof(*out)||h->abi_version!=SAN14_HOST_ABI_V1||

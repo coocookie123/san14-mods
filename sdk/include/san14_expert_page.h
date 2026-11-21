@@ -60,7 +60,7 @@ public:
         close_input();
         if(!panel_)return SAN14_OK;
         auto result=host_->ui.close_panel(host_->host_context,panel_);
-        if(result==SAN14_OK||result==SAN14_E_NOT_FOUND){panel_=0;footer_label_=0;footer_controls_.clear();bindings_.clear();slider_views_.clear();row_views_.clear();return SAN14_OK;}
+        if(result==SAN14_OK||result==SAN14_E_NOT_FOUND){panel_=0;footer_label_=0;footer_hint_label_=0;footer_controls_.clear();bindings_.clear();slider_views_.clear();row_views_.clear();return SAN14_OK;}
         return result;
     }
     San14PanelHandle handle()const{return panel_;}
@@ -88,12 +88,18 @@ public:
     void set_footer_actions(std::vector<std::pair<std::string,std::function<San14Result()>>> actions){
         if(panel_||actions.size()>2)throw SAN14_E_INVALID_ARGUMENT;footer_actions_=std::move(actions);
     }
-    void footer_hint(std::string hint){if(panel_)throw SAN14_E_INVALID_ARGUMENT;footer_hint_=std::move(hint);}
+    void footer_hint(std::string hint){
+        footer_hint_=std::move(hint);
+        if(footer_hint_label_)host_->ui.set_text(host_->host_context,footer_hint_label_,sv(footer_hint_));
+    }
     void footer_status(std::string message,bool pending){
         footer_message_=std::move(message);footer_pending_=pending;
         if(footer_label_)host_->ui.set_text(host_->host_context,footer_label_,sv(footer_message_));
-        for(auto control:footer_controls_)if(host_->ui_style->struct_size>=offsetof(San14UiStyleApi,set_enabled)+sizeof(host_->ui_style->set_enabled)&&host_->ui_style->set_enabled)
-            host_->ui_style->set_enabled(host_->host_context,control,pending?1:0);
+        for(size_t i=0;i<footer_controls_.size();++i)apply_footer_enabled(i);
+    }
+    void footer_action_enabled(size_t index,bool enabled){
+        footer_action_disabled_[index]=!enabled;
+        apply_footer_enabled(index);
     }
     San14Result refresh(){
         if(!panel_)return SAN14_OK;
@@ -123,8 +129,19 @@ private:
     std::map<std::string,bool> range_changed_;
     std::vector<std::pair<std::string,std::function<San14Result()>>> footer_actions_;
     std::vector<San14ControlHandle> footer_controls_;
-    San14ControlHandle footer_label_=0;
+    std::map<size_t,bool> footer_action_disabled_;
+    San14ControlHandle footer_label_=0,footer_hint_label_=0;
     std::string footer_message_,footer_hint_;bool footer_pending_=false;
+    bool footer_action_is_enabled(size_t index)const{
+        if(!footer_pending_)return false;
+        const auto it=footer_action_disabled_.find(index);
+        return it==footer_action_disabled_.end()||!it->second;
+    }
+    void apply_footer_enabled(size_t index){
+        if(index>=footer_controls_.size())return;
+        if(host_->ui_style->struct_size>=offsetof(San14UiStyleApi,set_enabled)+sizeof(host_->ui_style->set_enabled)&&host_->ui_style->set_enabled)
+            host_->ui_style->set_enabled(host_->host_context,footer_controls_[index],footer_action_is_enabled(index)?1:0);
+    }
     static bool has_slider_api(const San14HostApi* h){
         return h&&h->struct_size>=offsetof(San14HostApi,ui_slider)+sizeof(h->ui_slider)&&h->ui_slider&&
             h->ui_slider->struct_size>=offsetof(San14UiSliderApi,get_slider_value)+sizeof(h->ui_slider->get_slider_value)&&
@@ -258,7 +275,7 @@ private:
         try{
             if(binding.command==Command::Close){p->close();return;}
             if(binding.command==Command::Footer){
-                if(!p->footer_pending_||binding.index>=p->footer_actions_.size())return;
+                if(!p->footer_action_is_enabled(binding.index)||binding.index>=p->footer_actions_.size())return;
                 auto callback=p->footer_actions_[binding.index].second;if(callback)callback();return;
             }
             if(binding.command==Command::CancelInput){p->close_input();return;}
@@ -376,7 +393,7 @@ private:
             }
             current_view=nullptr;
             const auto footer_label=label(360,918,1360,30,footer_actions_.empty()?u8"设置即时生效 · Tab / 方向键选择 · Enter 执行 · Esc 返回":footer_message_);
-            if(!footer_hint_.empty())label(360,960,520,60,footer_hint_);
+            const auto footer_hint_label=!footer_hint_.empty()?label(360,960,520,60,footer_hint_):San14ControlHandle{0};
             std::vector<San14ControlHandle> footer_controls;
             for(size_t i=0;i<footer_actions_.size();++i)
                 footer_controls.push_back(button(1170+int(i)*290,1024,270,42,footer_actions_[i].first,0,Command::Footer,i,0,u8"提交待保存的设置。"));
@@ -385,7 +402,7 @@ private:
             auto old=panel_;panel_=next;help_=help;
             if(old)host_->ui.close_panel(host_->host_context,old);
             bindings_=std::move(bindings);choices_=std::move(choices);slider_views_=std::move(slider_views);row_views_=std::move(row_views);
-            footer_label_=footer_label;footer_controls_=std::move(footer_controls);
+            footer_label_=footer_label;footer_hint_label_=footer_hint_label;footer_controls_=std::move(footer_controls);
             for(const auto& entry:row_views_)tint_range(entry.first);
             if(!footer_actions_.empty())footer_status(footer_message_,footer_pending_);return SAN14_OK;
         }catch(San14Result result){if(next)host_->ui.close_panel(host_->host_context,next);return result;}

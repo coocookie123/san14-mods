@@ -876,6 +876,77 @@ int main(){
     assert(saved(local_storage).values[20]==100&&saved(local_storage).selected.has(20));
     assert(ui.global_storage.at("enhanced.presets.v1")==preset_bytes);
     assert(api.on_disable(&ctx)==SAN14_OK);api.on_unload(&ctx);
+
+    // SAN14_STORAGE_ERROR graceful degradation: never deadlock with SAN14_E_BUSY,
+    // keep/apply custom settings via configure_custom, allow enable() and open_page(),
+    // block Save-to-All while allowing live + global Save Changes, and recover cleanly.
+    {
+        auto has_degraded_banner=[&](){
+            for(const auto& item:ui.controls)
+                if(item.second.panel==top()&&item.second.text.find(u8"降级模式")!=std::string::npos)return true;
+            return false;
+        };
+        Preferences global_pref;global_pref.values[20]=166;global_pref.enhanced_edit=1;global_pref.selected.set(20);
+        ui.global_storage["enhanced.preferences.v4"]=bytes(global_pref);
+        local_storage.clear();
+        storage_info.state=SAN14_STORAGE_ERROR;storage_info.playthrough_id[0]=0;storage_info.save_basename[0]=0;++storage_info.revision;
+        const auto batches_before_err_enable=batch_writes;
+        assert(init(&host,&api)==SAN14_OK&&api.on_load(&ctx)==SAN14_OK&&api.on_enable(&ctx)==SAN14_OK);
+        assert(batch_writes==batches_before_err_enable+1&&custom_values.at("officer_stat_cap")==166&&edit_rule==1);
+        assert(ui.registered_page.open(nullptr)==SAN14_OK&&ui.stack.size()==1);
+        assert(has_degraded_banner());
+        assert(!ui.controls.at(find_button_by_text(top(),u8"保存变更到全部存档")).enabled);
+
+        // Recover to SAN14_STORAGE_READY -> loads per-save settings seamlessly.
+        Preferences save_pref;save_pref.values[20]=152;save_pref.extended_merit=1;save_pref.selected.set(20);
+        local_storage["enhanced.preferences.v4"]=bytes(save_pref);
+        storage_info.state=SAN14_STORAGE_READY;strcpy_s(storage_info.playthrough_id,"pt-rec");strcpy_s(storage_info.save_basename,"svdexceSC01.s14");++storage_info.revision;
+        fire(SAN14_EVENT_SAVE_LOADED);fire(SAN14_EVENT_UI_IDLE);
+        assert(custom_values.at("officer_stat_cap")==152&&merit_rule==1&&slider_value(0)==152);
+        assert(!has_degraded_banner());
+        slide(0,158);
+        assert(ui.controls.at(find_button_by_text(top(),u8"保存变更到全部存档")).enabled);
+        click_text(u8"保存变更");
+        assert(custom_values.at("officer_stat_cap")==158&&saved(local_storage).values[20]==158);
+
+        // Transition READY -> ERROR on a subsequent failed save load: must still
+        // invoke configure_custom (clearing custom_restore_pending) with live values (158),
+        // never reverting to vanilla 100 or returning SAN14_E_BUSY.
+        const auto batches_before_degrade=batch_writes;
+        const auto local_before_degrade=local_storage,peer_before_degrade=peer_storage;
+        storage_info.state=SAN14_STORAGE_ERROR;++storage_info.revision;
+        fire(SAN14_EVENT_SAVE_LOADED);fire(SAN14_EVENT_UI_IDLE);
+        assert(batch_writes==batches_before_degrade+1&&custom_values.at("officer_stat_cap")==158&&slider_value(0)==158);
+        assert(has_degraded_banner());
+        assert(ui.registered_page.open(nullptr)==SAN14_OK&&has_degraded_banner());
+
+        // Editing in degraded mode: Save-to-All stays disabled/blocked, while Save Changes
+        // applies live and updates global defaults even if edit_saved would fail.
+        slide(0,174);
+        assert(ui.controls.at(find_button_by_text(top(),u8"保存变更")).enabled);
+        assert(!ui.controls.at(find_button_by_text(top(),u8"保存变更到全部存档")).enabled);
+        fail_saved_edit=true;
+        click_text(u8"保存变更到全部存档");
+        assert(custom_values.at("officer_stat_cap")==158&&local_storage==local_before_degrade&&peer_storage==peer_before_degrade);
+        click_text(u8"保存变更");
+        fail_saved_edit=false;
+        assert(custom_values.at("officer_stat_cap")==174&&saved(ui.global_storage).values[20]==174);
+        assert(local_storage==local_before_degrade&&peer_storage==peer_before_degrade);
+
+        // Subsequent recovery back to SAN14_STORAGE_READY restores normal save sync.
+        // Also verify SAN14_E_BUSY from configure_custom (e.g. native load worker still busy)
+        // preserves sync_needed=true and retries automatically on the next UI_IDLE.
+        Preferences next_save;next_save.values[20]=141;next_save.selected.set(20);
+        local_storage["enhanced.preferences.v4"]=bytes(next_save);
+        storage_info.state=SAN14_STORAGE_READY;++storage_info.revision;
+        fail_configure=true;
+        fire(SAN14_EVENT_SAVE_LOADED);fire(SAN14_EVENT_UI_IDLE);
+        assert(custom_values.at("officer_stat_cap")==174);
+        fail_configure=false;
+        fire(SAN14_EVENT_UI_IDLE);
+        assert(custom_values.at("officer_stat_cap")==141&&slider_value(0)==141&&!has_degraded_banner());
+        assert(api.on_disable(&ctx)==SAN14_OK);api.on_unload(&ctx);
+    }
     FreeLibrary(dll);
-    std::cout<<"Enhanced settings: 102 caps, previous storage formats, native UI, rollback and lifecycle passed\n";
+    std::cout<<"Enhanced settings: 102 caps, previous storage formats, native UI, degraded storage, rollback and lifecycle passed\n";
 }
