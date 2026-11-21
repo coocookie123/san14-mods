@@ -313,8 +313,9 @@ DetectedGame detect_supported_game(const fs::path& game_dir) {
     for (const wchar_t* exe_name : kSupportedExeNames) {
         fs::path exe_path = game_dir / exe_name;
         if (!fs::is_regular_file(exe_path, ec)) continue;
-        std::string sha = hash_file(exe_path);
-        const auto* profile = installer_game_builds::select(exe_name, sha);
+        auto bytes = read_file(exe_path);
+        std::string sha = digest(bytes.data(), bytes.size());
+        const auto* profile = installer_game_builds::select_for_image(exe_name, sha, bytes);
         if (profile != nullptr) {
             return {exe_path, profile, sha, true};
         }
@@ -325,48 +326,125 @@ DetectedGame detect_supported_game(const fs::path& game_dir) {
     return first_mismatch;
 }
 
-bool stage_two_city(const fs::path& game, const fs::path& package,
-                    const installer_game_builds::GameBuild* profile) {
-    const fs::path bundle = package / kTwoCityBundle;
-    if (!fs::exists(bundle) || !profile || profile->game_build != 25953386) return false;
+enum class TwoCityStageStatus {
+    NotBundled,
+    Staged,
+    SkippedAlreadyValid,
+    SkippedUnsupportedBuild,
+    SkippedMissingBase,
+    SkippedModifiedBase,
+    FailedGeneration,
+};
 
-    const fs::path base = game / L"0010_SC/scedaexce01.s14";
-    plain_path(base);
-    if (!fs::is_regular_file(base) ||
-        hash_file(base) != "79f11f0ccefc2bc4752163941d5fd7b9b7ccf9cf8e952aa00f226c7c4030c93c") {
-        throw std::runtime_error("未找到与双城全明星对战匹配的原版剧本01。请通过 Steam 验证游戏文件完整性后重试。");
+std::wstring two_city_status_message(TwoCityStageStatus status) {
+    switch (status) {
+    case TwoCityStageStatus::NotBundled:
+        return L"";
+    case TwoCityStageStatus::Staged:
+        return L"\r\n双城全明星对战已准备好。可在主菜单“模组管理”中启用。";
+    case TwoCityStageStatus::SkippedAlreadyValid:
+        return L"\r\n双城全明星对战已存在有效版本，已保留并跳过重新生成。可在主菜单“模组管理”中启用。";
+    case TwoCityStageStatus::SkippedUnsupportedBuild:
+        return L"\r\n已跳过可选模组“双城全明星对战”：该剧本仅适用于简中《威力加强传承版》Build 25953386。";
+    case TwoCityStageStatus::SkippedMissingBase:
+        return L"\r\n已跳过可选模组“双城全明星对战”：游戏目录缺少原版剧本文件 0010_SC/scedaexce01.s14（管理器与默认模组已正常安装；如需此剧本，请通过 Steam 验证游戏文件完整性后重新运行安装程序）。";
+    case TwoCityStageStatus::SkippedModifiedBase:
+        return L"\r\n已跳过可选模组“双城全明星对战”：原版剧本文件 0010_SC/scedaexce01.s14 已被修改或版本不匹配（管理器与默认模组已正常安装；如需此剧本，请恢复原版剧本01后重新运行安装程序）。";
+    case TwoCityStageStatus::FailedGeneration:
+        return L"\r\n已跳过可选模组“双城全明星对战”：本地剧本生成失败（管理器与默认模组已正常安装；可核对游戏文件后重新运行安装程序）。";
     }
+    return L"";
+}
+
+TwoCityStageStatus stage_two_city(const fs::path& game, const fs::path& package,
+                                  const installer_game_builds::GameBuild* profile) noexcept {
+    const fs::path bundle = package / kTwoCityBundle;
+    std::error_code ec;
+    if (!fs::exists(bundle, ec)) return TwoCityStageStatus::NotBundled;
+    if (!profile || profile->game_build != 25953386) return TwoCityStageStatus::SkippedUnsupportedBuild;
 
     const fs::path mod = package / wide(kTwoCityModDir);
     const fs::path compiled = L"__san14_content__/definition.json";
-    const fs::path definition = bundle / compiled;
-    const auto bytes = read_file(definition, 2 * 1024 * 1024);
-    const auto metadata = WireJson::parse(bytes.begin(), bytes.end());
-    const auto& native = metadata.at("scenario").at("native_file");
-    const std::string sha = native.at("sha256").get<std::string>();
-    if (sha.size() != 64 || !std::all_of(sha.begin(), sha.end(), [](char digit) {
-            return (digit >= '0' && digit <= '9') || (digit >= 'a' && digit <= 'f');
-        }) || native.at("path") != "__san14_content__/" + sha + ".s14") {
-        throw std::runtime_error("双城全明星对战的剧本清单无效。");
-    }
     const fs::path output = bundle / L"generated.s14";
-    const fs::path author = bundle / L"runtime/author.exe";
-    using archive_extract::quote_arg;
-    const auto result = archive_extract::run(author, quote_arg(base.wstring()) + L" " +
-        quote_arg(definition.wstring()) + L" -o " + quote_arg(output.wstring()), bundle, 60000);
-    if (!result.launched || result.timed_out || result.exit_code != 0 ||
-        !fs::is_regular_file(output) || hash_file(output) != sha) {
-        throw std::runtime_error("生成双城全明星剧本失败。请验证游戏文件并重新运行安装程序。");
+    auto cleanup_partial = [&]() {
+        std::error_code ignore;
+        fs::remove(output, ignore);
+        fs::remove_all(mod, ignore);
+    };
+
+    try {
+        const fs::path definition = bundle / compiled;
+        const auto bytes = read_file(definition, 2 * 1024 * 1024);
+        const auto metadata = WireJson::parse(bytes.begin(), bytes.end());
+        const auto& native = metadata.at("scenario").at("native_file");
+        const std::string sha = native.at("sha256").get<std::string>();
+        if (sha.size() != 64 || !std::all_of(sha.begin(), sha.end(), [](char digit) {
+                return (digit >= '0' && digit <= '9') || (digit >= 'a' && digit <= 'f');
+            }) || native.at("path") != "__san14_content__/" + sha + ".s14") {
+            return TwoCityStageStatus::FailedGeneration;
+        }
+        const fs::path target_s14_rel = fs::path(L"__san14_content__") / wide(sha + ".s14");
+
+        // If already staged in package with expected output SHA-256, skip regenerating.
+        const fs::path staged_s14 = mod / target_s14_rel;
+        if (fs::is_regular_file(mod / L"mod.json", ec) &&
+            fs::is_regular_file(mod / compiled, ec) &&
+            fs::is_regular_file(staged_s14, ec) &&
+            hash_file(staged_s14) == sha) {
+            return TwoCityStageStatus::SkippedAlreadyValid;
+        }
+
+        // If already installed in the game directory with the expected output SHA-256,
+        // reuse the verified .s14 without regenerating (preserves upgrades even if base was edited).
+        const fs::path installed_mod = game / wide(kTwoCityModDir);
+        const fs::path installed_s14 = installed_mod / target_s14_rel;
+        if (fs::is_regular_file(installed_s14, ec)) {
+            plain_path(installed_s14);
+            if (hash_file(installed_s14) == sha) {
+                fs::create_directories((mod / compiled).parent_path());
+                fs::copy_file(bundle / L"mod.json", mod / L"mod.json", fs::copy_options::overwrite_existing);
+                fs::copy_file(bundle / L"README.md", mod / L"README.md", fs::copy_options::overwrite_existing);
+                fs::copy_file(definition, mod / compiled, fs::copy_options::overwrite_existing);
+                fs::copy_file(installed_s14, staged_s14, fs::copy_options::overwrite_existing);
+                return TwoCityStageStatus::SkippedAlreadyValid;
+            }
+        }
+
+        const fs::path base = game / L"0010_SC/scedaexce01.s14";
+        if (!fs::exists(base, ec)) {
+            return TwoCityStageStatus::SkippedMissingBase;
+        }
+        plain_path(base);
+        if (!fs::is_regular_file(base, ec) ||
+            hash_file(base) != "79f11f0ccefc2bc4752163941d5fd7b9b7ccf9cf8e952aa00f226c7c4030c93c") {
+            return TwoCityStageStatus::SkippedModifiedBase;
+        }
+
+        const fs::path author = bundle / L"runtime/author.exe";
+        if (!fs::is_regular_file(author, ec)) {
+            return TwoCityStageStatus::FailedGeneration;
+        }
+        using archive_extract::quote_arg;
+        const auto result = archive_extract::run(author, quote_arg(base.wstring()) + L" " +
+            quote_arg(definition.wstring()) + L" -o " + quote_arg(output.wstring()), bundle, 60000);
+        if (!result.launched || result.timed_out || result.exit_code != 0 ||
+            !fs::is_regular_file(output, ec) || hash_file(output) != sha) {
+            cleanup_partial();
+            return TwoCityStageStatus::FailedGeneration;
+        }
+        fs::create_directories((mod / compiled).parent_path());
+        fs::copy_file(bundle / L"mod.json", mod / L"mod.json", fs::copy_options::overwrite_existing);
+        fs::copy_file(bundle / L"README.md", mod / L"README.md", fs::copy_options::overwrite_existing);
+        fs::copy_file(definition, mod / compiled, fs::copy_options::overwrite_existing);
+        fs::rename(output, staged_s14);
+        return TwoCityStageStatus::Staged;
+    } catch (...) {
+        cleanup_partial();
+        return TwoCityStageStatus::FailedGeneration;
     }
-    fs::create_directories((mod / compiled).parent_path());
-    fs::copy_file(bundle / L"mod.json", mod / L"mod.json");
-    fs::copy_file(bundle / L"README.md", mod / L"README.md");
-    fs::copy_file(definition, mod / compiled);
-    fs::rename(output, mod / L"__san14_content__" / wide(sha + ".s14"));
-    return true;
 }
 
-std::string install_from_package(const fs::path& game_input, const fs::path& package_dir, const fs::path& data_dir, bool check_running = true, const InstallPolicy& policy = {}, fs::path* backup_output = nullptr) {
+std::string install_from_package(const fs::path& game_input, const fs::path& package_dir, const fs::path& data_dir, bool check_running = true, const InstallPolicy& policy = {}, fs::path* backup_output = nullptr, TwoCityStageStatus* two_city_output = nullptr) {
     if (!fs::exists(game_input) || !fs::is_directory(game_input)) {
         throw std::runtime_error("所选游戏目录不存在");
     }
@@ -400,7 +478,11 @@ std::string install_from_package(const fs::path& game_input, const fs::path& pac
         throw std::runtime_error("管理器数据包不完整");
     }
 
-    const bool staged_two_city = stage_two_city(game, package_dir, detected.profile);
+    const TwoCityStageStatus two_city_status = stage_two_city(game, package_dir, detected.profile);
+    const bool staged_two_city =
+        two_city_status == TwoCityStageStatus::Staged ||
+        two_city_status == TwoCityStageStatus::SkippedAlreadyValid;
+    if (two_city_output) *two_city_output = two_city_status;
     std::map<std::string, std::vector<unsigned char>> targets;
     targets["dinput8.dll"] = read_file(package_dir / L"dinput8.dll");
     for (const wchar_t* folder : {L"SAN14Mods", L"SAN14Base"}) {
@@ -884,16 +966,13 @@ void on_install_clicked() {
             return MessageBoxW(g_ui.hwnd, message.c_str(), title.c_str(), MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) == IDYES;
         };
         fs::path saved;
-        std::string installed_dir = install_from_package(fs::path(buf), pkg, local_data(), true, policy, &saved);
+        TwoCityStageStatus two_city_status = TwoCityStageStatus::NotBundled;
+        std::string installed_dir = install_from_package(fs::path(buf), pkg, local_data(), true, policy, &saved, &two_city_status);
         const bool unknown = detect_supported_game(fs::path(buf)).profile == nullptr;
         std::wstring message = L"管理器文件已安装到：\r\n" + wide(installed_dir) + L"\r\n本次备份：" + saved.wstring() +
             (unknown ? L"\r\n当前版本尚未识别；启动后将进行适配检查，不通过时会提示管理器未启用。"
                      : L"\r\n请从 Steam 正常启动游戏，在主菜单点击“模组管理”。");
-        if (fs::is_directory(pkg / kTwoCityBundle)) {
-            message += fs::is_regular_file(pkg / wide(kTwoCityModDir) / L"mod.json")
-                ? L"\r\n双城全明星对战已准备好。可在主菜单“模组管理”中启用。"
-                : L"\r\n双城全明星对战适用于 Steam 简中《威力加强传承版》Build 25953386。";
-        }
+        message += two_city_status_message(two_city_status);
         if (fs::is_regular_file(saved / L"previous-installation.json")) {
             message += L"\r\n旧安装记录已保留到：" + (saved / L"previous-installation.json").wstring() + L"\r\n旧备份已保留，新游戏使用独立的原始文件备份。";
         }

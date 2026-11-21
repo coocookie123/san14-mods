@@ -29,6 +29,116 @@ int main() {
     }
     const auto& ce = installer_game_builds::known_builds[0];
     assert(ce.game_build == 25953386 && installer_game_builds::select(L"san14ce_sc.EXE", ce.sha256) == &ce);
+    assert(!ce.pe_fingerprint.empty());
+    assert(installer_game_builds::select_by_fingerprint(L"SAN14CE_SC.exe", ce.pe_fingerprint) == &ce);
+    assert(installer_game_builds::select_by_fingerprint(L"san14ce_sc.EXE", ce.pe_fingerprint) == &ce);
+    assert(!installer_game_builds::select_by_fingerprint(L"SAN14CE_TC.exe", ce.pe_fingerprint));
+    auto bad_fp = ce.pe_fingerprint;
+    bad_fp.time_date_stamp ^= 1u;
+    assert(!installer_game_builds::select_by_fingerprint(L"SAN14CE_SC.exe", bad_fp));
+    bad_fp = ce.pe_fingerprint;
+    bad_fp.rsds_guid_hex = "00000000000000000000000000000000";
+    assert(!installer_game_builds::select_by_fingerprint(L"SAN14CE_SC.exe", bad_fp));
+    bad_fp = ce.pe_fingerprint;
+    bad_fp.rdata_sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
+    assert(!installer_game_builds::select_by_fingerprint(L"SAN14CE_SC.exe", bad_fp));
+    bad_fp = ce.pe_fingerprint;
+    bad_fp.pdata_sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
+    assert(!installer_game_builds::select_by_fingerprint(L"SAN14CE_SC.exe", bad_fp));
+
+    // Malformed / non-PE blobs must safely fail fingerprint extraction without throwing.
+    {
+        installer_game_builds::OwnedPeFingerprint fp;
+        const std::vector<unsigned char> garbage{'M', 'Z', 0, 1, 2, 3};
+        assert(!installer_game_builds::extract_pe_fingerprint(garbage, fp));
+        assert(!installer_game_builds::select_for_image(L"SAN14CE_SC.exe", "badsha", garbage));
+    }
+
+    // Synthetic minimal PE64 with .rdata, .pdata, TimeDateStamp, and CodeView RSDS entry
+    // verifies extraction logic even in CI environments without local game binaries.
+    {
+        std::vector<unsigned char> pe(0x1000, 0);
+        IMAGE_DOS_HEADER dos{};
+        dos.e_magic = IMAGE_DOS_SIGNATURE;
+        dos.e_lfanew = 0x80;
+        std::memcpy(pe.data(), &dos, sizeof(dos));
+
+        IMAGE_NT_HEADERS64 nt{};
+        nt.Signature = IMAGE_NT_SIGNATURE;
+        nt.FileHeader.Machine = IMAGE_FILE_MACHINE_AMD64;
+        nt.FileHeader.NumberOfSections = 2;
+        nt.FileHeader.TimeDateStamp = 0x12345678u;
+        nt.FileHeader.SizeOfOptionalHeader = sizeof(IMAGE_OPTIONAL_HEADER64);
+        nt.OptionalHeader.Magic = IMAGE_NT_OPTIONAL_HDR64_MAGIC;
+        nt.OptionalHeader.NumberOfRvaAndSizes = IMAGE_NUMBEROF_DIRECTORY_ENTRIES;
+        nt.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].VirtualAddress = 0x2000;
+        nt.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].Size = sizeof(IMAGE_DEBUG_DIRECTORY);
+        std::memcpy(pe.data() + 0x80, &nt, sizeof(nt));
+
+        const size_t sec_off = 0x80 + 4 + sizeof(IMAGE_FILE_HEADER) + sizeof(IMAGE_OPTIONAL_HEADER64);
+        IMAGE_SECTION_HEADER secs[2]{};
+        std::memcpy(secs[0].Name, ".rdata", 6);
+        secs[0].VirtualAddress = 0x2000;
+        secs[0].SizeOfRawData = 0x200;
+        secs[0].PointerToRawData = 0x400;
+        std::memcpy(secs[1].Name, ".pdata", 6);
+        secs[1].VirtualAddress = 0x3000;
+        secs[1].SizeOfRawData = 0x200;
+        secs[1].PointerToRawData = 0x600;
+        std::memcpy(pe.data() + sec_off, secs, sizeof(secs));
+
+        IMAGE_DEBUG_DIRECTORY dbg{};
+        dbg.Type = IMAGE_DEBUG_TYPE_CODEVIEW;
+        dbg.SizeOfData = 28;
+        dbg.AddressOfRawData = 0x2040;
+        dbg.PointerToRawData = 0x440;
+        std::memcpy(pe.data() + 0x400, &dbg, sizeof(dbg));
+        std::memcpy(pe.data() + 0x440, "RSDS", 4);
+        for (size_t i = 0; i < 16; ++i) pe[0x444 + i] = static_cast<unsigned char>(0x10 + i);
+        pe[0x600] = 0xAA;
+
+        installer_game_builds::OwnedPeFingerprint fp;
+        assert(installer_game_builds::extract_pe_fingerprint(pe, fp));
+        assert(fp.time_date_stamp == 0x12345678u);
+        assert(fp.rsds_guid_hex == "101112131415161718191a1b1c1d1e1f");
+        assert(fp.rdata_sha256 == digest(pe.data() + 0x400, 0x200));
+        assert(fp.pdata_sha256 == digest(pe.data() + 0x600, 0x200));
+    }
+
+    // Optional real-binary verification against local SteamStub / unpacked CE 1.0.2.0 executables
+    // (resolved via SAN14_TEST_STEAM_EXE / SAN14_TEST_UNPACKED_EXE or %USERPROFILE%\Downloads;
+    // gracefully skipped when absent, e.g. in CI).
+    {
+        auto env_path = [](const wchar_t* name) -> fs::path {
+            wchar_t buf[32768]{};
+            const DWORD n = GetEnvironmentVariableW(name, buf, 32768);
+            return (n > 0 && n < 32768) ? fs::path(std::wstring(buf, n)) : fs::path{};
+        };
+        const fs::path profile_dir = env_path(L"USERPROFILE");
+        fs::path steam_exe = env_path(L"SAN14_TEST_STEAM_EXE");
+        if (steam_exe.empty() && !profile_dir.empty()) steam_exe = profile_dir / L"Downloads" / L"SAN14CE_SC.exe";
+        fs::path unpacked_exe = env_path(L"SAN14_TEST_UNPACKED_EXE");
+        if (unpacked_exe.empty() && !profile_dir.empty()) unpacked_exe = profile_dir / L"Downloads" / L"SAN14CE_SC (1).exe";
+        std::error_code ec;
+        if (!steam_exe.empty() && fs::is_regular_file(steam_exe, ec)) {
+            auto bytes = read_file(steam_exe);
+            auto sha = digest(bytes.data(), bytes.size());
+            assert(installer_game_builds::select(L"SAN14CE_SC.exe", sha) == &ce);
+            installer_game_builds::OwnedPeFingerprint fp;
+            assert(installer_game_builds::extract_pe_fingerprint(bytes, fp));
+            assert(installer_game_builds::select_by_fingerprint(L"SAN14CE_SC.exe", fp.view()) == &ce);
+            assert(installer_game_builds::select_for_image(L"SAN14CE_SC.exe", sha, bytes) == &ce);
+        }
+        if (!unpacked_exe.empty() && fs::is_regular_file(unpacked_exe, ec)) {
+            auto bytes = read_file(unpacked_exe);
+            auto sha = digest(bytes.data(), bytes.size());
+            assert(installer_game_builds::select(L"SAN14CE_SC.exe", sha) == nullptr);
+            installer_game_builds::OwnedPeFingerprint fp;
+            assert(installer_game_builds::extract_pe_fingerprint(bytes, fp));
+            assert(installer_game_builds::select_by_fingerprint(L"SAN14CE_SC.exe", fp.view()) == &ce);
+            assert(installer_game_builds::select_for_image(L"SAN14CE_SC.exe", sha, bytes) == &ce);
+        }
+    }
     put(game / L"SAN14CE_SC.exe", "modified test executable");
     put(game / L"dinput8.dll", "original HR");
     put(package / L"dinput8.dll", "new manager");
@@ -177,5 +287,79 @@ int main() {
     rejects([&] { restore_installation(state, false, accept); });
     rejects([&] { install_from_package(game, package, state, false, accept); });
     assert(get(game / L"dinput8.dll") == "new manager");
+
+    // Optional Two City scenario staging must be strictly non-fatal and return structured statuses.
+    {
+        const auto tc_root = fixture.path / L"two-city";
+        const auto tc_game = tc_root / L"game";
+        const auto tc_pkg = tc_root / L"pkg";
+        const std::string fake_s14 = "expected compiled two-city scenario payload";
+        const std::string fake_sha = digest(fake_s14.data(), fake_s14.size());
+        const std::string valid_def = std::string(R"({"scenario":{"native_file":{"path":"__san14_content__/)") +
+                                      fake_sha + R"(.s14","sha256":")" + fake_sha + R"("}}})";
+
+        // 1. NotBundled when SAN14TwoCity does not exist.
+        assert(stage_two_city(tc_game, tc_pkg, &ce) == TwoCityStageStatus::NotBundled);
+        assert(two_city_status_message(TwoCityStageStatus::NotBundled).empty());
+
+        // Populate a Two City bundle without author.exe.
+        put(tc_pkg / kTwoCityBundle / L"mod.json", R"({"id":"two-city-all-stars-mod"})");
+        put(tc_pkg / kTwoCityBundle / L"README.md", "readme");
+        put(tc_pkg / kTwoCityBundle / L"__san14_content__/definition.json", valid_def);
+
+        // 2. SkippedUnsupportedBuild when profile is null or non-25953386.
+        assert(stage_two_city(tc_game, tc_pkg, nullptr) == TwoCityStageStatus::SkippedUnsupportedBuild);
+        assert(stage_two_city(tc_game, tc_pkg, &installer_game_builds::known_builds[1]) == TwoCityStageStatus::SkippedUnsupportedBuild);
+
+        // 3. SkippedMissingBase when 0010_SC/scedaexce01.s14 is absent.
+        assert(stage_two_city(tc_game, tc_pkg, &ce) == TwoCityStageStatus::SkippedMissingBase);
+        const auto missing_msg = two_city_status_message(TwoCityStageStatus::SkippedMissingBase);
+        assert(missing_msg.find(L"缺少") != std::wstring::npos && missing_msg.find(L"0010_SC/scedaexce01.s14") != std::wstring::npos);
+
+        // 4. SkippedModifiedBase when 0010_SC/scedaexce01.s14 exists with a modified hash.
+        put(tc_game / L"0010_SC/scedaexce01.s14", "user modified scenario 01");
+        assert(stage_two_city(tc_game, tc_pkg, &ce) == TwoCityStageStatus::SkippedModifiedBase);
+        const auto modified_msg = two_city_status_message(TwoCityStageStatus::SkippedModifiedBase);
+        assert(modified_msg.find(L"已被修改") != std::wstring::npos && modified_msg.find(L"0010_SC/scedaexce01.s14") != std::wstring::npos);
+        assert(missing_msg != modified_msg);
+
+        // 5. SkippedAlreadyValid when already installed in game dir with expected output SHA-256
+        //    (even when base scedaexce01.s14 is modified or missing!).
+        put(tc_game / wide(kTwoCityModDir) / L"__san14_content__" / wide(fake_sha + ".s14"), fake_s14);
+        assert(stage_two_city(tc_game, tc_pkg, &ce) == TwoCityStageStatus::SkippedAlreadyValid);
+        assert(fs::is_regular_file(tc_pkg / wide(kTwoCityModDir) / L"mod.json"));
+        assert(hash_file(tc_pkg / wide(kTwoCityModDir) / L"__san14_content__" / wide(fake_sha + ".s14")) == fake_sha);
+
+        // 6. SkippedAlreadyValid when already staged in package.
+        fs::remove_all(tc_game / wide(kTwoCityModDir));
+        assert(stage_two_city(tc_game, tc_pkg, &ce) == TwoCityStageStatus::SkippedAlreadyValid);
+
+        // 7. FailedGeneration on malformed definition.json (must not throw!).
+        fs::remove_all(tc_pkg / wide(kTwoCityModDir));
+        put(tc_pkg / kTwoCityBundle / L"__san14_content__/definition.json", "{broken json");
+        assert(stage_two_city(tc_game, tc_pkg, &ce) == TwoCityStageStatus::FailedGeneration);
+        assert(!fs::exists(tc_pkg / wide(kTwoCityModDir)));
+
+        // 8. End-to-end install_from_package with bundled SAN14TwoCity never aborts core install.
+        const auto e2e_game = tc_root / L"e2e-game";
+        const auto e2e_pkg = tc_root / L"e2e-pkg";
+        const auto e2e_state = tc_root / L"e2e-state";
+        put(e2e_game / L"SAN14CE_SC.exe", "modified test executable");
+        put(e2e_game / L"dinput8.dll", "original HR");
+        put(e2e_pkg / L"dinput8.dll", "new manager");
+        put(e2e_pkg / rel, "new companion");
+        put(e2e_pkg / L"SAN14Base/commands/native-engine.js", "command");
+        put(e2e_pkg / L"SAN14Base/commands/native-engine.metadata.json", "{}");
+        put(e2e_pkg / L"SAN14Base/worker/san14-managed-worker.exe", "worker");
+        put(e2e_pkg / L"SAN14Base/worker/_internal/runtime.dll", "runtime");
+        put(e2e_pkg / kTwoCityBundle / L"mod.json", R"({"id":"two-city-all-stars-mod"})");
+        put(e2e_pkg / kTwoCityBundle / L"README.md", "readme");
+        put(e2e_pkg / kTwoCityBundle / L"__san14_content__/definition.json", valid_def);
+        TwoCityStageStatus status = TwoCityStageStatus::NotBundled;
+        install_from_package(e2e_game, e2e_pkg, e2e_state, false, accept, nullptr, &status);
+        assert(status == TwoCityStageStatus::SkippedUnsupportedBuild);
+        assert(get(e2e_game / L"dinput8.dll") == "new manager");
+        assert(get(e2e_game / rel) == "new companion");
+    }
     return 0;
 }
