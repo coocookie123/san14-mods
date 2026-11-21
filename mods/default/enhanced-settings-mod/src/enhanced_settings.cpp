@@ -164,7 +164,7 @@ San14Result sync(){
     const std::string next_playthrough=info.state==SAN14_STORAGE_READY?info.playthrough_id:"";
     if(!sync_needed&&revision==info.revision&&playthrough==next_playthrough&&storage_degraded==degraded)return SAN14_OK;
     const bool switched=!draft_ready||revision!=info.revision||playthrough!=next_playthrough||storage_degraded!=degraded;
-    Preferences next=degraded?(configured?current:defaults):(info.state==SAN14_STORAGE_READY&&info.save_basename[0]?archive_defaults:defaults);
+    Preferences next=(degraded||(storage_degraded&&configured))?(configured?current:defaults):(info.state==SAN14_STORAGE_READY&&info.save_basename[0]?archive_defaults:defaults);
     if(info.state==SAN14_STORAGE_READY){
         bool migrated=false;const auto read=read_preferences("playthrough",next,&migrated);
         if(read!=SAN14_OK&&read!=SAN14_E_NOT_FOUND)return read;

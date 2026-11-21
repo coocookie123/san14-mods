@@ -933,12 +933,25 @@ int main(){
         assert(custom_values.at("officer_stat_cap")==174&&saved(ui.global_storage).values[20]==174);
         assert(local_storage==local_before_degrade&&peer_storage==peer_before_degrade);
 
-        // Subsequent recovery back to SAN14_STORAGE_READY restores normal save sync.
+        // Recovering from degraded mode via Save (fresh empty playthrough attachment,
+        // non-empty save_basename) must preserve active in-memory `current` (174)
+        // and write it into playthrough storage instead of reverting to archive_defaults.
+        local_storage.clear();
+        storage_info.state=SAN14_STORAGE_READY;strcpy_s(storage_info.playthrough_id,"pt-save-rec");strcpy_s(storage_info.save_basename,"svdexceSC02.s14");++storage_info.revision;
+        fire(SAN14_EVENT_STORAGE_CHANGED);fire(SAN14_EVENT_UI_IDLE);
+        assert(custom_values.at("officer_stat_cap")==174&&slider_value(0)==174&&!has_degraded_banner());
+        assert(saved(local_storage).values[20]==174);
+
+        // Subsequent recovery from degraded mode to a save WITH an attachment loads
+        // that save's own preferences (141).
+        storage_info.state=SAN14_STORAGE_ERROR;++storage_info.revision;
+        fire(SAN14_EVENT_STORAGE_CHANGED);fire(SAN14_EVENT_UI_IDLE);
+        assert(custom_values.at("officer_stat_cap")==174&&has_degraded_banner());
         // Also verify SAN14_E_BUSY from configure_custom (e.g. native load worker still busy)
         // preserves sync_needed=true and retries automatically on the next UI_IDLE.
         Preferences next_save;next_save.values[20]=141;next_save.selected.set(20);
         local_storage["enhanced.preferences.v4"]=bytes(next_save);
-        storage_info.state=SAN14_STORAGE_READY;++storage_info.revision;
+        storage_info.state=SAN14_STORAGE_READY;strcpy_s(storage_info.playthrough_id,"pt-rec-2");++storage_info.revision;
         fail_configure=true;
         fire(SAN14_EVENT_SAVE_LOADED);fire(SAN14_EVENT_UI_IDLE);
         assert(custom_values.at("officer_stat_cap")==174);
