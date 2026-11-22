@@ -360,6 +360,52 @@ int main() {
         assert(status == TwoCityStageStatus::SkippedUnsupportedBuild);
         assert(get(e2e_game / L"dinput8.dll") == "new manager");
         assert(get(e2e_game / rel) == "new companion");
+
+        // 9. Upgrading over a previously installed, unowned two-city-all-stars-mod with updated
+        //    mod.json / README.md must adopt & upgrade cleanly while backing up prior files.
+        const auto tc_dir = e2e_game / wide(kTwoCityModDir);
+        put(tc_dir / L"mod.json", R"({"id":"two-city-all-stars-mod","author":"old"})");
+        put(tc_dir / L"README.md", "old readme");
+        put(tc_dir / L"__san14_content__/definition.json", valid_def);
+        put(tc_dir / L"__san14_content__" / wide(fake_sha + ".s14"), fake_s14);
+        assert(is_existing_two_city_mod(e2e_game));
+
+        put(e2e_pkg / kTwoCityBundle / L"mod.json", R"({"id":"two-city-all-stars-mod","authors":[{"name":"new"}]})");
+        put(e2e_pkg / kTwoCityBundle / L"README.md", "new readme");
+        fs::path upgrade_backup;
+        status = TwoCityStageStatus::NotBundled;
+        install_from_package(e2e_game, e2e_pkg, e2e_state, false, accept, &upgrade_backup, &status, &ce);
+        assert(status == TwoCityStageStatus::SkippedAlreadyValid);
+        assert(get(tc_dir / L"mod.json") == R"({"id":"two-city-all-stars-mod","authors":[{"name":"new"}]})");
+        assert(get(tc_dir / L"README.md") == "new readme");
+        assert(get(upgrade_backup / wide(kTwoCityModDir) / L"README.md") == "old readme");
+        auto upgraded_owner = WireJson::parse(get(e2e_state / L"installation.json"));
+        assert(upgraded_owner.at("installed").contains(std::string(kTwoCityModDir) + "mod.json"));
+        assert(upgraded_owner.at("installed").contains(std::string(kTwoCityModDir) + "README.md"));
+
+        // 10. Unrelated unowned mod under SAN14Mods/two-city-all-stars-mod/ must still be rejected.
+        const auto conflict_game = tc_root / L"conflict-game";
+        const auto conflict_state = tc_root / L"conflict-state";
+        const auto conflict_pkg = tc_root / L"conflict-pkg";
+        put(conflict_game / L"SAN14CE_SC.exe", "modified test executable");
+        put(conflict_game / L"dinput8.dll", "original HR");
+        put(conflict_pkg / L"dinput8.dll", "new manager");
+        put(conflict_pkg / rel, "new companion");
+        put(conflict_pkg / L"SAN14Base/commands/native-engine.js", "command");
+        put(conflict_pkg / L"SAN14Base/commands/native-engine.metadata.json", "{}");
+        put(conflict_pkg / L"SAN14Base/worker/san14-managed-worker.exe", "worker");
+        put(conflict_pkg / L"SAN14Base/worker/_internal/runtime.dll", "runtime");
+        install_from_package(conflict_game, conflict_pkg, conflict_state, false, accept, nullptr, nullptr, &ce);
+        const auto conflict_tc = conflict_game / wide(kTwoCityModDir);
+        put(conflict_tc / L"mod.json", R"({"id":"unrelated-mod"})");
+        put(conflict_tc / L"README.md", "foreign readme");
+        put(conflict_tc / L"__san14_content__" / wide(fake_sha + ".s14"), fake_s14);
+        assert(!is_existing_two_city_mod(conflict_game));
+        put(conflict_pkg / kTwoCityBundle / L"mod.json", R"({"id":"two-city-all-stars-mod"})");
+        put(conflict_pkg / kTwoCityBundle / L"README.md", "new readme");
+        put(conflict_pkg / kTwoCityBundle / L"__san14_content__/definition.json", valid_def);
+        rejects([&] { install_from_package(conflict_game, conflict_pkg, conflict_state, false, accept, nullptr, nullptr, &ce); });
+        assert(get(conflict_tc / L"README.md") == "foreign readme");
     }
     return 0;
 }

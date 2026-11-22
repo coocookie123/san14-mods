@@ -444,7 +444,21 @@ TwoCityStageStatus stage_two_city(const fs::path& game, const fs::path& package,
     }
 }
 
-std::string install_from_package(const fs::path& game_input, const fs::path& package_dir, const fs::path& data_dir, bool check_running = true, const InstallPolicy& policy = {}, fs::path* backup_output = nullptr, TwoCityStageStatus* two_city_output = nullptr) {
+bool is_existing_two_city_mod(const fs::path& game) noexcept {
+    try {
+        const fs::path manifest = game / wide(kTwoCityModDir) / L"mod.json";
+        std::error_code ec;
+        if (!fs::is_regular_file(manifest, ec)) return false;
+        plain_path(manifest);
+        const auto bytes = read_file(manifest, 1024 * 1024);
+        const auto j = WireJson::parse(bytes.begin(), bytes.end());
+        return j.is_object() && j.value("id", std::string{}) == "two-city-all-stars-mod";
+    } catch (...) {
+        return false;
+    }
+}
+
+std::string install_from_package(const fs::path& game_input, const fs::path& package_dir, const fs::path& data_dir, bool check_running = true, const InstallPolicy& policy = {}, fs::path* backup_output = nullptr, TwoCityStageStatus* two_city_output = nullptr, const installer_game_builds::GameBuild* profile_override = nullptr) {
     if (!fs::exists(game_input) || !fs::is_directory(game_input)) {
         throw std::runtime_error("所选游戏目录不存在");
     }
@@ -452,6 +466,9 @@ std::string install_from_package(const fs::path& game_input, const fs::path& pac
     DetectedGame detected = detect_supported_game(game);
     if (!detected.found_candidate) {
         throw std::runtime_error("目录中未找到受支持的三国志14主程序 (CE/PK/原版 简繁，暂不支持曲海金戈)");
+    }
+    if (profile_override != nullptr) {
+        detected.profile = profile_override;
     }
     if (check_running && game_running()) {
         throw std::runtime_error("检测到三国志14正在运行，请先正常退出游戏再安装。");
@@ -537,6 +554,7 @@ std::string install_from_package(const fs::path& game_input, const fs::path& pac
         confirm_changed_files(policy, changed, false);
     }
 
+    const bool existing_two_city = staged_two_city && is_existing_two_city_mod(game);
     for (auto it = targets.begin(); it != targets.end();) {
         const auto& [rel, data] = *it;
         const fs::path path = owned_target(game, rel);
@@ -545,7 +563,13 @@ std::string install_from_package(const fs::path& game_input, const fs::path& pac
             ++it;
             continue;
         }
-        // A previously installed, matching optional Mod remains owned by its original installer.
+        // Adopt and upgrade a previously installed Two City optional Mod so metadata/content
+        // updates (e.g. mod.json / README.md) succeed cleanly without unowned-conflict errors.
+        if (existing_two_city && rel.rfind(kTwoCityModDir, 0) == 0 && fs::is_regular_file(path)) {
+            ++it;
+            continue;
+        }
+        // A previously staged matching file without a manifest remains unowned.
         if (staged_two_city && rel.rfind(kTwoCityModDir, 0) == 0 && read_file(path) == data) {
             it = targets.erase(it);
             continue;
