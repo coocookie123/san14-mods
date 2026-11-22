@@ -34,12 +34,14 @@ struct Feature {
 };
 
 const Feature features[] = {
-    {"fix_ai_gate_siege", u8"优化电脑攻城编组：更常使用攻城器械，并提高单支器械队兵力", u8"提高电脑单一出征队列上限并优化攻城队配比。", "ai.siege.composition", Service::Rule, 0, u8"常规"},
-    {"dynamic_diplomacy", u8"动态外交（类似群雄策 MOD）：电脑会选择一个主要敌人进攻，并尽量与其他势力结盟", u8"依据威胁与敌意动态判定主敌；对共敌势力放宽同盟与停战条件，对互敌势力提高结盟阻力。", "diplomacy.ai.dynamic", Service::Diplomacy, 0, u8"常规"},
-    {"smart_district_ai", u8"优化孙权等南方势力的水战逻辑：防守时主动出击在水上解决战斗", u8"检测水域来袭与河道威胁，择优推举水战/操舵武将并调度舰队拦截或机动防御。", "ai.tactical.policy", Service::Tactical, 0, u8"常规"},
-    {"emergency_reinforcement_ai", u8"优化电脑出兵、回防和邻城救援逻辑", u8"重估支援兵力并保障前线安全留兵，在战局吃紧时触发远征召回、邻城强援及防止过早撤退。", "ai.tactical.policy", Service::Tactical, 0, u8"常规"},
-    {"siege_interception_ai", u8"电脑防守时会主动出击攻击攻城器械", u8"基于行军时间窗口预警敌方攻城器械并统筹前线迎击。", "ai.tactical.policy", Service::Tactical, 0, u8"常规"},
-    {"weighted_government_auto_assign", u8"优化电脑施政", u8"根据兵力、战线、粮草和水域威胁调整自动施政排序。", "government.ai.optimized", Service::Government, 0, u8"常规"},
+    {"reduce_ai_office_evaluation_frequency", u8"降低电脑官职评定频率", u8"将电脑官职自动评定由每月改为每六个月，仅在每年一月、七月月初按原条件评定；关闭恢复原版频率。", "ai.office.semiannual", Service::Rule, 0, u8"常规"},
+    {"ai_district_orders_99", u8"电脑和军团99命令书", u8"每旬发放时电脑势力和玩家委任军团获得99本，玩家直辖军团按原版；发放后仍正常扣费。适用于简中传承版。", "districts.orders.ai_refill_99", Service::Rule, 0, u8"常规"},
+    {"fix_ai_gate_siege", u8"优化电脑攻城编组：更常使用攻城器械，并提高单支器械队兵力", u8"提高电脑单一出征队列上限并优化攻城队配比。", "ai.siege.composition", Service::Rule, 0, u8"策略优化"},
+    {"dynamic_diplomacy", u8"动态外交（类似群雄策 MOD）：电脑会选择一个主要敌人进攻，并尽量与其他势力结盟", u8"依据威胁与敌意动态判定主敌；对共敌势力放宽同盟与停战条件，对互敌势力提高结盟阻力。", "diplomacy.ai.dynamic", Service::Diplomacy, 0, u8"策略优化"},
+    {"smart_district_ai", u8"优化孙权等南方势力的水战逻辑：防守时主动出击在水上解决战斗", u8"检测水域来袭与河道威胁，择优推举水战/操舵武将并调度舰队拦截或机动防御。", "ai.tactical.policy", Service::Tactical, 0, u8"策略优化"},
+    {"emergency_reinforcement_ai", u8"优化电脑出兵、回防和邻城救援逻辑", u8"重估支援兵力并保障前线安全留兵，在战局吃紧时触发远征召回、邻城强援及防止过早撤退。", "ai.tactical.policy", Service::Tactical, 0, u8"策略优化"},
+    {"siege_interception_ai", u8"电脑防守时会主动出击攻击攻城器械", u8"基于行军时间窗口预警敌方攻城器械并统筹前线迎击。", "ai.tactical.policy", Service::Tactical, 0, u8"策略优化"},
+    {"weighted_government_auto_assign", u8"优化电脑施政", u8"根据兵力、战线、粮草和水域威胁调整自动施政排序。", "government.ai.optimized", Service::Government, 0, u8"策略优化"},
     {"bt_deploy", u8"出兵编成：主力分兵与侧翼锋矢", u8"迎击出兵时按强将数量平分兵力并自动配属锋矢侧翼与雁行辅助，避免单将满兵孤军送死。", "ai.tactical.policy", Service::Tactical, 1, u8"行为树优化"},
     {"bt_rally", u8"集结齐进：迎击会合与攻城同步防落单", u8"迎击与攻城多路军势同步会合、近处晚出与防先头部队落单送死，绝不往回拉扯。", "ai.tactical.policy", Service::Tactical, 1, u8"行为树优化"},
     {"bt_engage", u8"会战协同：分流集火与贴敌还手", u8"近战按负载分流避免扎堆、锋矢优先突击远程/器械，并令贴敌待命部队立即还手。", "ai.tactical.policy", Service::Tactical, 1, u8"行为树优化"},
@@ -50,7 +52,7 @@ const Feature features[] = {
     {"bt_gate", u8"守关调度：关后雁行布防、近战回城与隔关撤退豁免", u8"受攻关隘仅派雁行据关射击、阻止关后排队与跨关送死，并豁免隔关不可达敌军触发的误撤退。", "ai.tactical.policy", Service::Tactical, 1, u8"行为树优化"}
 };
 constexpr size_t feature_count = sizeof(features) / sizeof(features[0]);
-static_assert(feature_count == 14, "AI IQ mod's 6 legacy + 8 BT module feature set");
+static_assert(feature_count == 16, "AI IQ mod's 2 general + 6 legacy + 8 BT module feature set");
 bool applied[feature_count]{};
 
 bool eval_disable_global_rules() {

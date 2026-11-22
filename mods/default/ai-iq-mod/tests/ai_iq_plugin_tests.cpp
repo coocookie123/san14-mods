@@ -143,13 +143,21 @@ int main() {
     auto init = reinterpret_cast<Initialize>(GetProcAddress(dll, "SAN14Mod_Initialize"));
     assert(init);
 
-    // 1. Default registration: 14 settings (6 legacy default=0 + 8 new BT default=1).
+    // 1. Default registration: 16 settings (2 general default=0 + 6 legacy default=0 + 8 new BT default=1).
     reset_mocks();
     auto host = fake_host();
     San14ModApi api{}; api.struct_size = sizeof(api);
     San14ModContext context{}; context.struct_size = sizeof(context);
     assert(init(&host, &api) == SAN14_OK);
-    assert(api.on_load(&context) == SAN14_OK && settings.size() == 14);
+    assert(api.on_load(&context) == SAN14_OK && settings.size() == 16);
+    assert(key(settings[0].key) == "reduce_ai_office_evaluation_frequency" && key(settings[0].label) == u8"降低电脑官职评定频率" && key(settings[0].category) == u8"常规" && settings[0].default_value == 0);
+    assert(key(settings[1].key) == "ai_district_orders_99" && key(settings[1].label) == u8"电脑和军团99命令书" && key(settings[1].category) == u8"常规" && settings[1].default_value == 0);
+    for (size_t i = 2; i < 8; ++i) {
+        assert(settings[i].default_value == 0 && key(settings[i].category) == u8"策略优化");
+    }
+    for (size_t i = 8; i < 16; ++i) {
+        assert(settings[i].default_value == 1 && key(settings[i].category) == u8"行为树优化");
+    }
     assert(find_setting("bt_deploy").default_value == 1);
     assert(find_setting("bt_gate").default_value == 1);
     assert(find_setting("weighted_government_auto_assign").default_value == 0);
@@ -159,14 +167,21 @@ int main() {
     assert(rules.at("ai.tactical.policy") == 0 && !registered_tactical.on_strategy_update);
     api.on_unload(&context);
 
-    // 2. Shared tactical refcount across all 3 legacy + 8 BT toggles (starting with all off).
+    // 2. Shared tactical refcount across all 3 legacy + 8 BT toggles (starting with all off) + 2 General toggles.
     reset_mocks();
     set_all_bt(0);
     host = fake_host();
     api = {}; api.struct_size = sizeof(api);
     assert(init(&host, &api) == SAN14_OK);
-    assert(api.on_load(&context) == SAN14_OK && settings.size() == 14);
+    assert(api.on_load(&context) == SAN14_OK && settings.size() == 16);
     assert(api.on_enable(&context) == SAN14_OK && rules.empty());
+    assert(change("reduce_ai_office_evaluation_frequency", 1) == SAN14_OK && rules.at("ai.office.semiannual") == 1);
+    assert(change("reduce_ai_office_evaluation_frequency", 0) == SAN14_OK && rules.at("ai.office.semiannual") == 0);
+    assert(change("ai_district_orders_99", 1) == SAN14_OK && rules.at("districts.orders.ai_refill_99") == 1);
+    fail_rule = "districts.orders.ai_refill_99";
+    assert(change("ai_district_orders_99", 0) == SAN14_E_BUSY && rules.at(fail_rule) == 1);
+    fail_rule.clear();
+    assert(change("ai_district_orders_99", 0) == SAN14_OK && rules.at("districts.orders.ai_refill_99") == 0);
 
     assert(key(find_setting("weighted_government_auto_assign").label) == u8"优化电脑施政");
     fail_government = true;
@@ -263,7 +278,20 @@ int main() {
     assert(registered_government && rules.at("government.ai.optimized") == 1);
     assert(api.on_disable(&context) == SAN14_OK); api.on_unload(&context);
 
-    std::cout << "AI IQ plugin: ABI, 14 features (6 legacy + 8 BT), shared tactical refcount, eval isolation and graceful degradation passed\n";
+    reset_mocks(); host = fake_host(); set_all_bt(0); values["reduce_ai_office_evaluation_frequency"] = 1; fail_rule = "ai.office.semiannual";
+    api = {}; api.struct_size = sizeof(api);
+    assert(init(&host, &api) == SAN14_OK && api.on_load(&context) == SAN14_OK);
+    assert(api.on_enable(&context) == SAN14_E_BUSY && rules.empty());
+    assert(api.on_disable(&context) == SAN14_OK); api.on_unload(&context);
+
+    reset_mocks(); host = fake_host(); set_all_bt(0); values["reduce_ai_office_evaluation_frequency"] = 1;
+    api = {}; api.struct_size = sizeof(api);
+    assert(init(&host, &api) == SAN14_OK && api.on_load(&context) == SAN14_OK && api.on_enable(&context) == SAN14_OK);
+    fail_rule = "ai.office.semiannual"; fail_rule_value = 0;
+    assert(api.on_disable(&context) == SAN14_E_BUSY && rules.at(fail_rule) == 1);
+    fail_rule.clear(); assert(api.on_disable(&context) == SAN14_OK && rules.at("ai.office.semiannual") == 0); api.on_unload(&context);
+
+    std::cout << "AI IQ plugin: ABI, 16 features (2 general + 6 legacy + 8 BT), shared tactical refcount, eval isolation and graceful degradation passed\n";
     FreeLibrary(dll);
     return 0;
 }
