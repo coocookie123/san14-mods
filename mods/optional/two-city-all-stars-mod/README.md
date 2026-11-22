@@ -6,4 +6,4 @@
 
 从仓库根目录使用 `-Target mods -Mod two-city-all-stars-mod -ScenarioFile '<原版 CE 剧本01>'` 构建。原始剧本由使用者本地提供，生成资产只放在 build/。
 
-作者：SAN14 Mod Project。
+作者：[清都jsl](https://space.bilibili.com/3690994744691528)。

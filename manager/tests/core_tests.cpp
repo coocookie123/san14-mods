@@ -31,7 +31,16 @@ int main(){
     assert(credits(u8R"([{"name":"黑色曲奇","url":"https://steamcommunity.com/profiles/76561198090135353"}])")==SAN14_E_BUFFER_TOO_SMALL);
     normalized.resize(required);assert(api->admit_mod(root.c_str(),&identity,normalized.data(),required,&required,error,sizeof(error))==SAN14_OK);
     assert(json::parse(normalized.data()).at("coauthors").array[0].at("url").str()=="https://steamcommunity.com/profiles/76561198090135353");
-    for(const auto& value:{"null","{}","[1]","[\"Legacy\"]","[{\"name\":\"\"}]","[{\"name\":\"a\",\"url\":\"javascript:alert(1)\"}]","[{\"name\":\"a\"},{\"name\":\"a\"}]"})assert(credits(value)==SAN14_E_INVALID_ARGUMENT);
+    for(const auto& value:{"null","{}","[1]","[{\"name\":\"\"}]","[{\"name\":\"a\",\"url\":\"javascript:alert(1)\"}]","[{\"name\":\"a\"},{\"name\":\"a\"}]"})assert(credits(value)==SAN14_E_INVALID_ARGUMENT);
+    const std::string authors_manifest=R"({"schema_version":1,"id":"fixture-mod","name":"Fixture","version":"0.1.0","authors":[{"name":"AuthorA","url":"https://example.com/a"},{"name":"AuthorB","url":"https://example.com/b"}],"contributors":[{"name":"Helper","url":"https://example.com/h"}],"entry":{"type":"native","path":"fixture.dll","abi":1},"host_version":">=0.2.0 <0.3.0","game_builds":[1],"dependencies":[],"conflicts":[],"permissions":["storage.saved-edit"],"disable_mode":"hot"})";
+    write_atomic(root/L"mod.json",authors_manifest.data(),authors_manifest.size());
+    assert(api->admit_mod(root.c_str(),&identity,nullptr,0,&required,error,sizeof(error))==SAN14_E_BUFFER_TOO_SMALL);
+    normalized.assign(required,0);assert(api->admit_mod(root.c_str(),&identity,normalized.data(),required,&required,error,sizeof(error))==SAN14_OK);
+    assert(json::parse(normalized.data()).at("authors").array.size()==2);
+    for(const std::string& bad:{std::string(R"({"schema_version":1,"id":"fixture-mod","name":"Fixture","version":"0.1.0","authors":[],"entry":{"type":"native","path":"fixture.dll","abi":1},"host_version":">=0.2.0 <0.3.0","game_builds":[1],"dependencies":[],"conflicts":[],"permissions":["storage.saved-edit"],"disable_mode":"hot"})"),std::string(R"({"schema_version":1,"id":"fixture-mod","name":"Fixture","version":"0.1.0","authors":[{"name":"Dup"},{"name":"Dup"}],"entry":{"type":"native","path":"fixture.dll","abi":1},"host_version":">=0.2.0 <0.3.0","game_builds":[1],"dependencies":[],"conflicts":[],"permissions":["storage.saved-edit"],"disable_mode":"hot"})"),std::string(R"({"schema_version":1,"id":"fixture-mod","name":"Fixture","version":"0.1.0","authors":[{"name":"BadUrl","url":"http://example.com"}],"entry":{"type":"native","path":"fixture.dll","abi":1},"host_version":">=0.2.0 <0.3.0","game_builds":[1],"dependencies":[],"conflicts":[],"permissions":["storage.saved-edit"],"disable_mode":"hot"})")}){
+        write_atomic(root/L"mod.json",bad.data(),bad.size());
+        assert(api->admit_mod(root.c_str(),&identity,nullptr,0,&required,error,sizeof(error))!=SAN14_OK);
+    }
     write_atomic(root/L"mod.json",manifest.data(),manifest.size());
     identity.game_build=2;assert(api->admit_mod(root.c_str(),&identity,nullptr,0,&required,error,sizeof(error))!=SAN14_OK);
 

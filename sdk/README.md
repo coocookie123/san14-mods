@@ -3,7 +3,7 @@
 SDK 位于统一仓库的 `sdk/`，不依赖其它 Git 仓库即可编译插件。版本见 `project.json`，当前为 0.2.1、Host ABI v1。
 
 - `include/`：C ABI 头文件；从 `san14_mod.h` 开始接入。
-- `schemas/mod.schema.json`：Mod 清单格式。
+- `schemas/mod.schema.json`：Mod 清单格式（支持有序 `authors` 并列作者列表与 `contributors` 贡献者列表，每项可附独立 `https://` 个人主页链接，同时向后兼容单作者 `author`/`author_url`）。
 - `testing/`：插件 UI 等合成夹具。
 - `examples/`：最小插件、存储、页面和内容示例。
 - `tools/build_plugin.ps1`：构建原生插件并运行其 C++ 测试。

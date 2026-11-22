@@ -32,20 +32,21 @@ function Assert-MetadataUrl([object]$taskSourceUrl,[string]$taskUrlField) {
     }
 }
 foreach($taskUrlField in @('author_url','source_url')){if($Manifest.PSObject.Properties.Name -contains $taskUrlField){Assert-MetadataUrl $Manifest.$taskUrlField $taskUrlField}}
-foreach($taskPeopleField in @('contributors','coauthors')) {
-if ($Manifest.PSObject.Properties.Name -contains $taskPeopleField) {
-    if($Manifest.$taskPeopleField -isnot [Array] -or $Manifest.$taskPeopleField.Count -gt 16){throw 'contributors must be an array of at most 16 names'}
-    $taskContributorNames=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
-    foreach($taskContributor in $Manifest.$taskPeopleField){
-        if($taskContributor -is [string] -and $taskPeopleField -eq 'contributors'){$taskContributorName=$taskContributor}
-        elseif($taskContributor -is [pscustomobject] -and $taskContributor.PSObject.Properties.Name -contains 'name'){
-            foreach($taskField in $taskContributor.PSObject.Properties.Name){if($taskField -notin @('name','url')){throw 'Unknown contributor field'}}
-            $taskContributorName=$taskContributor.name
-            if($taskContributor.PSObject.Properties.Name -contains 'url'){Assert-MetadataUrl $taskContributor.url 'contributors.url'}
-        }else{throw 'contributors entries require a name'}
-        if($taskContributorName -isnot [string] -or -not $taskContributorName -or $taskContributorName.Length -gt 80 -or $taskContributorName.StartsWith(' ') -or $taskContributorName.EndsWith(' ') -or $taskContributorName -match '[\x00-\x1f\x7f]' -or -not $taskContributorNames.Add($taskContributorName)){throw 'Invalid contributor name'}
+foreach($taskPeopleField in @('authors','coauthors','contributors')) {
+    if ($Manifest.PSObject.Properties.Name -contains $taskPeopleField) {
+        $taskPeople=$Manifest.$taskPeopleField
+        if($taskPeople -isnot [Array] -or $taskPeople.Count -gt 16 -or ($taskPeopleField -eq 'authors' -and $taskPeople.Count -eq 0)){throw "$taskPeopleField must be an array of at most 16 names"}
+        $taskNames=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+        foreach($taskPerson in $taskPeople){
+            if($taskPerson -is [string]){$taskPersonName=$taskPerson}
+            elseif($taskPerson -is [pscustomobject] -and $taskPerson.PSObject.Properties.Name -contains 'name'){
+                foreach($taskField in $taskPerson.PSObject.Properties.Name){if($taskField -notin @('name','url')){throw "Unknown $taskPeopleField field"}}
+                $taskPersonName=$taskPerson.name
+                if($taskPerson.PSObject.Properties.Name -contains 'url'){Assert-MetadataUrl $taskPerson.url "$taskPeopleField.url"}
+            }else{throw "$taskPeopleField entries require a name"}
+            if($taskPersonName -isnot [string] -or -not $taskPersonName -or $taskPersonName.Length -gt 80 -or $taskPersonName.StartsWith(' ') -or $taskPersonName.EndsWith(' ') -or $taskPersonName -match '[\x00-\x1f\x7f]' -or -not $taskNames.Add($taskPersonName)){throw "Invalid $taskPeopleField name"}
+        }
     }
-}
 }
 if ($Manifest.entry.type -eq 'content') {
     if (-not $Output) { $Output = Join-Path (Split-Path -Parent $ModRoot) "$Id-$Version.s14mod" }

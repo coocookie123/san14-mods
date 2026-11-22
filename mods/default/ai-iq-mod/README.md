@@ -26,8 +26,8 @@
 
 ## 作者
 
-- 第一作者：[清都jsl](https://space.bilibili.com/3690994744691528)
-- 第二作者：[黑色曲奇](https://steamcommunity.com/profiles/76561198090135353)（8 项电脑 AI 行为树模块原始设计）
+- [清都jsl](https://space.bilibili.com/3690994744691528)
+- [黑色曲奇](https://steamcommunity.com/profiles/76561198090135353)（8 项电脑 AI 行为树模块原始设计）
 
 ## 第三方许可（MIT License）
 

@@ -12,6 +12,6 @@
 ./build.ps1 -Target mods -Mod companion-mod -Tests -ArtifactRoot build/companion-mod
 ```
 
-作者：[清都jsl](https://space.bilibili.com/3690994744691528)。
+作者：[清都jsl](https://space.bilibili.com/3690994744691528)；贡献者：[纸箱墨镜还有狗](https://space.bilibili.com/230969570)。
 
 「电脑和军团99命令书」已移到「电脑智商优化 → 常规」第一页。本 Mod 不再提供该项；配套 Host 会迁移原启用偏好，避免两个 Mod 同时控制此规则。
