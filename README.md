@@ -14,7 +14,7 @@ tests/                   默认／可选分组和打包检查
 
 `default` 表示常规打包范围，各 Mod 的启用偏好仍由各自清单和用户设置决定。`optional` 不进入默认 Mod 包。组件独立版本记录在各自 `mod.json` 或 `project.json`，源码来源提交见 [sources.lock.json](sources.lock.json)。
 
-实际游戏内存地址、版本布局、Hook 和原生命令适配源码位于独立的私有 GameAdapter 仓库。本仓不包含游戏文件、存档或该适配源码。默认构建会从公开 [0.2.2 Release](https://github.com/zhaoqxu/san14-mods/releases/tag/v0.2.2) 下载匹配编译件，不需要私有仓权限。
+实际游戏内存地址、版本布局、Hook 和原生命令适配源码位于独立的私有 GameAdapter 仓库。本仓不包含游戏文件、存档或该适配源码。默认构建会从公开 [0.3.0 开发适配包](https://github.com/zhaoqxu/san14-mods/releases/tag/gameadapter-0.1.0-for-0.3.0-dev-20261122-1) 下载固定校验的匹配编译件，不需要私有仓权限。
 
 ## 构建
 
@@ -41,7 +41,7 @@ py -3.12 -m venv .venv
 
 ```powershell
 ./build.ps1 -Offline -Tests -ArtifactRoot build/first
-./build.ps1 -Offline -AdapterArchive './SAN14-GameAdapter-0.1.0-for-0.2.2-r2-win64.zip' -Tests
+./build.ps1 -Offline -AdapterArchive './SAN14-GameAdapter-0.1.0-for-0.3.0-dev-20261122-1-win64.zip' -Tests
 ```
 
 只研究通用 Host、希望跳过二进制获取时，使用 `-SkipGameAdapter`，此时不生成完整运行包和安装器。`-Target mods` 或 `-Target worker` 本身不下载适配器。构建只生成文件，安装时请手动运行 Setup。
@@ -66,7 +66,7 @@ py -3.12 -m venv .venv
 
 双城制作器只读取用户提供的匹配原始剧本，生成的原生内容位于 `build/`，不进入源码仓。没有原始剧本仍可编辑、构建其它七个原生插件。
 
-曹操 Mod 需要运行时提供 `world.officer_temperament`；SDK 使用兼容的可选表尾接口，旧适配器缺少该能力时明确拒绝加载此可选插件。当前锁定的单 Worker 预览适配器尚不提供该可选服务，不能运行曹操插件；它不影响六个默认 Mod 的构建和使用。此组合的游戏内验收仍待完成。
+曹操 Mod 需要运行时提供 `world.officer_temperament`；SDK 使用兼容的可选表尾接口，旧适配器缺少该能力时明确拒绝加载此可选插件。当前开发适配包包含该可选服务。曹操插件需要明确选择构建和安装；新组合的游戏内验收单独记录。
 
 ## 协作
 
