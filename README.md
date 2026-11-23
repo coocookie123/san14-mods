@@ -6,7 +6,7 @@
 manager/                 通用 Host、运行包打包和地址无关的 MCP Worker
 sdk/                     SDK 头文件、Schema、示例和插件构建工具
 mods/
-  default/               优化伴侣、存档数据统计、电脑智商优化、增强字体、增强设定与编辑、MCP
+  default/               优化伴侣、存档数据统计、电脑智商优化、增强字体、增强设定与编辑、基建规则调整、MCP
   optional/              一千个曹操、双城全明星对战
 tools/                   统一打包工具
 tests/                   默认／可选分组和打包检查
@@ -28,9 +28,9 @@ py -3.12 -m venv .venv
 ./build.ps1 -Tests -ArtifactRoot build/first
 ```
 
-准备好构建依赖后，一次运行 `build.ps1` 即可生成安装器。默认构建管理器、单 MCP Worker 和六个默认 Mod，并自动下载、校验及解压 GameAdapter。
+准备好构建依赖后，一次运行 `build.ps1` 即可生成安装器。默认构建管理器、单 MCP Worker 和七个默认 Mod，并自动下载、校验及解压 GameAdapter。
 
-- `build/first/SAN14-ModManager-Setup-<版本>.exe` 内嵌管理器运行包、许可证和六个默认 Mod。MCP 随包安装，默认关闭。
+- `build/first/SAN14-ModManager-Setup-<版本>.exe` 内嵌管理器运行包、许可证和七个默认 Mod。MCP 随包安装，默认关闭。
 - `build/first/SAN14-runtime.zip`、`SAN14-mods-default.zip` 和 `mods/default/*.s14mod` 供单独使用。
 
 `-IncludeOptional` 额外生成可选 Mod 包，安装器仍只包含默认分组。仅构建组件子集或用 `-Mod` 选择 Mod 时，跳过安装器打包。

@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "id": "facility-rules-mod",
+  "name": "基建规则调整",
+  "version": "0.1.0",
+  "author": "黑色曲奇",
+  "author_url": "https://steamcommunity.com/profiles/76561198090135353",
+  "description": "调整设施与陷阱的原版规则，每项独立开关、默认关闭。陷阱近身触发：陷阱、落石、猛火陷阱要敌军走到陷阱所在格或紧挨的 6 格内才发动，伤害、状态异常和效果范围照原版，双方的陷阱一样处理。目前适用于简中传承版 1.0.2。",
+  "entry": {
+    "type": "native",
+    "path": "bin/win-x64/facility_rules.dll",
+    "abi": 1
+  },
+  "host_version": ">=0.2.0 <0.4.0",
+  "dependencies": [],
+  "conflicts": [],
+  "permissions": [
+    "game.rules",
+    "settings"
+  ],
+  "default_enabled": true,
+  "disable_mode": "hot",
+  "load_order": 70,
+  "source_url": "https://github.com/zhaoqxu/san14-mods/tree/main/mods/default/facility-rules-mod"
+}

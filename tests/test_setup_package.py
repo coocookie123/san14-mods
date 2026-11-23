@@ -59,7 +59,7 @@ class SetupPackageTests(unittest.TestCase):
 
     def test_embeds_only_the_default_mods_and_runtime(self):
         report = package(ROOT, self.output)
-        self.assertEqual(report["default_mods"], 6)
+        self.assertEqual(report["default_mods"], 7)
         output = Path(report["file"])
         self.assertEqual(output.name, f"SAN14-ModManager-Setup-{self.version}.exe")
         exe = output.read_bytes()

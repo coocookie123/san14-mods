@@ -60,7 +60,7 @@ class PackagingTests(unittest.TestCase):
     def test_default_does_not_select_optional_mods(self):
         selected=package.selected(ROOT)
         self.assertEqual({item['id'] for item in selected},
-                         {'companion-mod','save-stats-mod','ai-iq-mod','enhanced-font-mod','enhanced-settings-mod','mcp-mod'})
+                         {'companion-mod','save-stats-mod','ai-iq-mod','enhanced-font-mod','enhanced-settings-mod','mcp-mod','facility-rules-mod'})
         self.assertTrue(all(item['group']=='default' for item in selected))
 
     def test_optional_selection_is_explicit(self):
